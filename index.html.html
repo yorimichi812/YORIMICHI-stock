@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>庫存管理</title>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body {
+  --ink:#1b2430; --soft:#67727e; --faint:#a8b0b7;
+  --paper:#f2f4f1; --card:#fff; --rule:#dfe3de; --hair:#eef0ec;
+  --factory:#0f6e5c; --factory-bg:#e6f1ee;
+  --store:#a85f0b; --store-bg:#fbf0df;
+  --alert:#bb332b; --alert-bg:#fdeceb;
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  color:var(--ink); background:var(--paper);
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum";
+  min-height:100vh; -webkit-text-size-adjust:100%;
+}
+button { font-family:inherit; cursor:pointer; }
+input, select { font-family:inherit; font-size:16px; color:var(--ink); font-variant-numeric:tabular-nums; }
+:focus-visible { outline:2px solid var(--ink); outline-offset:1px; border-radius:4px; }
+
+.hd { position:sticky; top:0; z-index:20; background:var(--card);
+  border-bottom:1px solid var(--rule); padding:10px 14px; display:flex; align-items:center; gap:10px; }
+.hd .t { font-weight:700; font-size:15px; }
+.dot { width:7px; height:7px; border-radius:50%; flex:none; }
+.dot.ok { background:var(--factory); }
+.dot.saving { background:#c99a1e; }
+.dot.err { background:var(--alert); }
+.sync { font-size:11.5px; color:var(--faint); display:flex; align-items:center; gap:5px; }
+.hd .who { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12.5px; }
+.hd .who b { font-weight:600; }
+.linkbtn { border:0; background:none; color:var(--soft); font-size:12.5px; text-decoration:underline; padding:6px 2px; }
+
+main.body { padding:14px 12px 92px; max-width:1080px; margin:0 auto; }
+h2.pg { font-size:18px; font-weight:700; margin:0 0 3px; }
+p.lede { margin:0 0 14px; font-size:12.5px; color:var(--soft); line-height:1.6; }
+h3.sec { font-size:13px; font-weight:700; margin:22px 0 8px; }
+
+.card { background:var(--card); border:1px solid var(--rule); border-radius:10px; overflow:hidden; }
+.card + .card { margin-top:12px; }
+.pad { padding:14px; }
+
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th { font-size:11px; font-weight:600; color:var(--soft); text-align:right;
+  padding:8px; background:#fafbfa; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th.l, td.l { text-align:left; }
+td { padding:9px 8px; text-align:right; border-bottom:1px solid var(--hair); white-space:nowrap; }
+tbody tr:last-child td { border-bottom:0; }
+.f { color:var(--factory); }
+.s { color:var(--store); }
+.big { font-weight:600; font-size:15px; }
+.sub { display:block; font-size:11px; color:var(--faint); margin-top:1px; }
+.sub.out { color:var(--alert); }
+.mv { font-size:10.5px; padding:1px 4px; border-radius:3px; font-weight:600; }
+.mv.f { background:var(--factory-bg); }
+.mv.s { background:var(--store-bg); }
+.faint { color:var(--faint); }
+.tag { display:inline-block; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; }
+.tag.f { background:var(--factory-bg); color:var(--factory); }
+.tag.s { background:var(--store-bg); color:var(--store); }
+.tag.admin { background:#e9ecf3; color:#3f4b60; }
+tr.now td { background:#f6f8f7; }
+tr.now td:first-child { box-shadow:inset 3px 0 0 var(--ink); }
+tr.bad td { background:var(--alert-bg); }
+.neg { color:var(--alert); font-weight:700; }
+td.gone { color:#b9c0c5; }
+
+.btn { border:1px solid var(--ink); background:var(--ink); color:#fff;
+  padding:11px 16px; border-radius:8px; font-size:14px; font-weight:600; min-height:44px; }
+.btn.ghost { background:none; color:var(--ink); border-color:var(--rule); font-weight:500; }
+.btn.danger { background:none; color:var(--alert); border-color:#e8c8c5; }
+.btn.mini { padding:7px 12px; min-height:36px; font-size:13px; }
+.btn.wide { width:100%; }
+.btn:disabled { opacity:.4; }
+
+.seg { display:flex; border:1px solid var(--rule); border-radius:8px; overflow:hidden; background:var(--card); }
+.seg button { flex:1; border:0; background:none; padding:10px 6px; font-size:13.5px;
+  color:var(--soft); min-height:42px; white-space:nowrap; }
+.seg button + button { border-left:1px solid var(--rule); }
+.seg button.on { background:var(--ink); color:#fff; font-weight:600; }
+
+.fields { display:flex; flex-wrap:wrap; gap:10px; }
+.fld { display:flex; flex-direction:column; gap:4px; flex:1 1 130px; min-width:0; }
+.fld.full { flex-basis:100%; }
+.fld label { font-size:11.5px; color:var(--soft); }
+.fld input, .fld select { padding:10px; border:1px solid var(--rule); border-radius:8px;
+  background:var(--card); width:100%; min-height:44px; }
+
+.note { font-size:12px; color:var(--soft); line-height:1.65; margin:10px 0 0; }
+.note.warn { color:var(--alert); }
+.alertbox { background:var(--alert-bg); border:1px solid #eecfcc; border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+.alertbox b { font-size:13.5px; }
+.alertbox ul { margin:6px 0 0; padding-left:17px; font-size:13px; }
+.alertbox li { margin:3px 0; }
+.empty { padding:32px 14px; text-align:center; color:var(--soft); font-size:13.5px; }
+
+.olist { display:flex; flex-direction:column; }
+.ord { padding:13px 14px; border-bottom:1px solid var(--hair); }
+.ord:last-child { border-bottom:0; }
+.ord .top { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+.ord .date { font-size:17px; font-weight:700; }
+.ord .wd { font-size:11.5px; color:var(--faint); }
+.ord .cust { font-size:14px; font-weight:600; margin-left:auto; }
+.ord .lines { font-size:13.5px; color:var(--soft); line-height:1.75; }
+.ord .lines b { color:var(--ink); }
+.ord .no { font-size:11.5px; color:var(--faint); margin-top:5px; }
+.ord .acts { display:flex; gap:8px; margin-top:9px; }
+
+.tabbar { position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex;
+  background:var(--card); border-top:1px solid var(--rule); padding-bottom:env(safe-area-inset-bottom); }
+.tabbar button { flex:1; border:0; background:none; padding:9px 2px 10px; font-size:11.5px;
+  color:var(--soft); display:flex; flex-direction:column; align-items:center; gap:3px; min-height:54px; }
+.tabbar button.on { color:var(--ink); font-weight:700; }
+.tabbar .ic { font-size:17px; line-height:1; }
+
+.tabs { display:flex; gap:16px; border-bottom:1px solid var(--rule); margin-bottom:14px; }
+.tabs button { border:0; background:none; padding:9px 0; font-size:14px; color:var(--soft);
+  border-bottom:2px solid transparent; margin-bottom:-1px; min-height:42px; }
+.tabs button.on { color:var(--ink); font-weight:700; border-bottom-color:var(--ink); }
+
+.sheet { position:fixed; inset:0; z-index:60; background:var(--paper); display:flex; flex-direction:column; }
+.sheet header { background:var(--card); border-bottom:1px solid var(--rule); padding:12px 14px; font-weight:700; font-size:15px; }
+.sheet .inner { flex:1; overflow:auto; padding:14px; }
+.sheet footer { background:var(--card); border-top:1px solid var(--rule);
+  padding:12px 14px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:10px; }
+.sheet footer .btn { flex:1; }
+.row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.row select { flex:1; min-width:0; padding:10px; border:1px solid var(--rule); border-radius:8px; min-height:44px; background:var(--card); }
+.row input { width:88px; padding:10px; border:1px solid var(--rule); border-radius:8px; min-height:44px; }
+
+.toast { position:fixed; left:50%; bottom:76px; transform:translateX(-50%);
+  background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px;
+  font-size:13.5px; z-index:90; max-width:88%; text-align:center; }
+.scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+.gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+.gate .box { width:100%; max-width:360px; }
+.gate h1 { font-size:20px; font-weight:700; margin:0 0 6px; }
+.gate p { font-size:13px; color:var(--soft); line-height:1.7; margin:0 0 18px; }
+.gate code { background:#e7eae6; padding:1px 5px; border-radius:4px; font-size:12px; }
+
+@media (min-width:760px) {
+  main.body { padding:22px 24px 40px; }
+  .tabbar { position:static; border-top:0; border-bottom:1px solid var(--rule); justify-content:flex-start; }
+  .tabbar button { flex:0 0 auto; flex-direction:row; gap:7px; padding:12px 20px; font-size:14px; }
+  .tabbar button.on { box-shadow:inset 0 -2px 0 var(--ink); }
+  .ord { display:grid; grid-template-columns:120px 1fr auto; align-items:start; gap:16px; }
+  .ord .top { margin-bottom:0; flex-direction:column; align-items:flex-start; gap:2px; }
+  .ord .cust { margin-left:0; }
+  .ord .acts { margin-top:0; }
+  .fld { flex:0 1 170px; }
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+/* ==================================================================
+   設定：把這兩行換成你的 Supabase 專案資料
+   Supabase 後台 → Project Settings → API
+   Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
+   anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
+   ================================================================== */
+const SUPABASE_URL = "https://ogjgxzzymdjyxcdnzuee.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
+
+const configured =
+  SUPABASE_URL.indexOf("你的") === -1 && SUPABASE_ANON_KEY.indexOf("你的") === -1;
+const sb = configured
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+/* ------------------------------------------------------------------ */
+/* 小工具                                                              */
+/* ------------------------------------------------------------------ */
+
+const LOCS = [
+  { id: "factory", name: "工廠" },
+  { id: "store", name: "門市" },
+];
+const LOC_NAME = { factory: "工廠", store: "門市" };
+const ENTRY_LABEL = { in: "入庫", transfer_out: "調撥出", transfer_in: "調撥入", adjust: "盤點調整" };
+
+const pad = (n) => String(n).padStart(2, "0");
+const today = () => new Date().toLocaleDateString("sv-SE");
+const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+const fmt = (n) => (n === 0 ? "0" : n.toLocaleString("en-US"));
+const mdOf = (d) => Number(d.slice(5, 7)) + "/" + Number(d.slice(8));
+const WD = ["日", "一", "二", "三", "四", "五", "六"];
+const weekdayOf = (d) => WD[new Date(d + "T00:00:00").getDay()];
+const tsOf = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+};
+
+function balanceAt(db, itemId, loc, dateStr) {
+  let v = 0;
+  for (const e of db.entries)
+    if (e.itemId === itemId && e.loc === loc && e.date <= dateStr) v += e.qty;
+  for (const o of db.orders) {
+    if (o.loc !== loc || o.date > dateStr) continue;
+    for (const l of o.lines) if (l.itemId === itemId) v -= l.qty;
+  }
+  return v;
+}
+const currentQty = (db, itemId, loc) => balanceAt(db, itemId, loc, today());
+
+function buildMonth(db, itemId, year, month) {
+  const total = daysInMonth(year, month);
+  const first = year + "-" + pad(month) + "-01";
+  const shipped = { factory: {}, store: {} };
+  const moved = { factory: {}, store: {} };
+  let f = 0;
+  let s = 0;
+
+  for (const e of db.entries) {
+    if (e.itemId !== itemId) continue;
+    if (e.date < first) {
+      if (e.loc === "factory") f += e.qty; else s += e.qty;
+    } else if (moved[e.loc]) moved[e.loc][e.date] = (moved[e.loc][e.date] || 0) + e.qty;
+  }
+  for (const o of db.orders) {
+    let q = 0;
+    for (const l of o.lines) if (l.itemId === itemId) q += l.qty;
+    if (!q) continue;
+    if (o.date < first) {
+      if (o.loc === "factory") f -= q; else s -= q;
+    } else if (shipped[o.loc]) shipped[o.loc][o.date] = (shipped[o.loc][o.date] || 0) + q;
+  }
+
+  const rows = [];
+  for (let d = 1; d <= total; d++) {
+    const date = year + "-" + pad(month) + "-" + pad(d);
+    const fMove = moved.factory[date] || 0;
+    const sMove = moved.store[date] || 0;
+    const fShip = shipped.factory[date] || 0;
+    const sShip = shipped.store[date] || 0;
+    f = f + fMove - fShip;
+    s = s + sMove - sShip;
+    rows.push({ date, fMove, sMove, fShip, sShip, fLeft: f, sLeft: s, total: f + s });
+  }
+  return rows;
+}
+
+function shortageScan(db, y, m) {
+  const out = [];
+  for (const it of db.items) {
+    if (!it.active) continue;
+    const rows = buildMonth(db, it.id, y, m);
+    for (const loc of ["factory", "store"]) {
+      const key = loc === "factory" ? "fLeft" : "sLeft";
+      const hit = rows.find((r) => r[key] < 0);
+      if (hit) out.push({ item: it, loc, date: hit.date, qty: hit[key] });
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* 資料存取                                                            */
+/* ------------------------------------------------------------------ */
+
+async function fetchAll() {
+  const [items, orders, entries, logs, users] = await Promise.all([
+    sb.from("items").select("*").order("sku"),
+    sb.from("orders").select("*, order_lines(*)").order("ship_date"),
+    sb.from("stock_entries").select("*").order("created_at"),
+    sb.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(400),
+    sb.from("app_users").select("*").order("name"),
+  ]);
+  const err = [items, orders, entries, logs, users].find((r) => r.error);
+  if (err) throw err.error;
+
+  return {
+    items: (items.data || []).map((i) => ({
+      id: i.id, sku: i.sku, name: i.name, unit: i.unit, active: i.active,
+    })),
+    orders: (orders.data || []).map((o) => ({
+      id: o.id, no: o.no, extNo: o.ext_no, customer: o.customer,
+      date: o.ship_date, loc: o.loc,
+      createdBy: o.created_by_name, editedBy: o.edited_by_name, editedAt: tsOf(o.edited_at),
+      lines: (o.order_lines || []).map((l) => ({ id: l.id, itemId: l.item_id, qty: l.qty })),
+    })),
+    entries: (entries.data || []).map((e) => ({
+      id: e.id, date: e.entry_date, ts: tsOf(e.created_at), loc: e.loc, itemId: e.item_id,
+      qty: e.qty, type: e.type, before: e.before_qty, after: e.after_qty,
+      note: e.note, operator: e.operator_name, userId: e.operator_id,
+    })),
+    logs: (logs.data || []).map((l) => ({
+      id: l.id, ts: tsOf(l.created_at), operator: l.operator_name, userId: l.operator_id,
+      action: l.action, summary: l.summary,
+    })),
+    users: (users.data || []).map((u) => ({
+      id: u.id, name: u.name, role: u.role, active: u.active,
+    })),
+  };
+}
+
+/* ==================================================================
+   主元件
+   ================================================================== */
+
+function App() {
+  const [session, setSession] = useState(undefined);
+  const [db, setDb] = useState(null);
+  const [sync, setSync] = useState("loading");
+  const [page, setPage] = useState("stock");
+  const [toast, setToast] = useState("");
+  const timer = useRef(null);
+
+  const flash = useCallback((m) => {
+    setToast(m);
+    setTimeout(() => setToast(""), 2800);
+  }, []);
+
+  const load = useCallback(async (quiet) => {
+    if (!quiet) setSync("loading");
+    try {
+      setDb(await fetchAll());
+      setSync("ok");
+    } catch (e) {
+      console.error(e);
+      setSync("err");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    load();
+    const bump = () => {
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => load(true), 600);
+    };
+    const ch = sb
+      .channel("inv-all")
+      .on("postgres_changes", { event: "*", schema: "public" }, bump)
+      .subscribe();
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, 60000);
+    const onVis = () => document.visibilityState === "visible" && load(true);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      sb.removeChannel(ch);
+      clearInterval(poll);
+      clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [session, load]);
+
+  if (!configured) return <SetupHelp />;
+  if (session === undefined) return <div className="empty">載入中…</div>;
+  if (!session) return <LoginScreen flash={flash} toast={toast} />;
+  if (!db) return <div className="empty">載入中…</div>;
+
+  const me = db.users.find((u) => u.id === session.user.id) || {
+    id: session.user.id, name: session.user.email, role: "staff", active: true,
+  };
+
+  const run = async (fn, okMsg) => {
+    setSync("saving");
+    try {
+      await fn();
+      await load(true);
+      setSync("ok");
+      if (okMsg) flash(okMsg);
+      return true;
+    } catch (e) {
+      console.error(e);
+      setSync("err");
+      flash(e && e.message ? "存不進去：" + e.message : "存不進去，檢查網路");
+      return false;
+    }
+  };
+
+  const logIt = (action, summary, snapshot) =>
+    sb.from("audit_logs").insert({
+      action, summary, snapshot: snapshot || null,
+      operator_id: me.id, operator_name: me.name,
+    });
+
+  const ctx = { db, me, run, logIt, flash, reload: () => load(true) };
+  const tabs = [
+    ["stock", "庫存", "▤"],
+    ["orders", "訂單", "▦"],
+    ["ops", "作業", "＋"],
+    ["settings", "設定", "◇"],
+    ["logs", "紀錄", "☰"],
+  ];
+
+  return (
+    <div>
+      <div className="hd">
+        <div className="t">庫存管理</div>
+        <div className="sync">
+          <span className={"dot " + (sync === "ok" ? "ok" : sync === "err" ? "err" : "saving")} />
+          {sync === "ok" ? "已同步" : sync === "saving" ? "儲存中" : sync === "err" ? "沒同步到" : "載入中"}
+        </div>
+        <div className="who">
+          <b>{me.name}</b>
+          <button className="linkbtn" onClick={() => sb.auth.signOut()}>登出</button>
+        </div>
+      </div>
+
+      <nav className="tabbar">
+        {tabs.map(([id, label, ic]) => (
+          <button key={id} className={page === id ? "on" : ""} onClick={() => setPage(id)}>
+            <span className="ic">{ic}</span>
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <main className="body">
+        {page === "stock" && <StockPage {...ctx} />}
+        {page === "orders" && <OrdersPage {...ctx} />}
+        {page === "ops" && <OpsPage {...ctx} />}
+        {page === "settings" && <SettingsPage {...ctx} />}
+        {page === "logs" && <LogsPage {...ctx} />}
+      </main>
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 設定說明與登入                                                      */
+/* ------------------------------------------------------------------ */
+
+function SetupHelp() {
+  return (
+    <div className="gate">
+      <div className="box">
+        <h1>還沒設定連線</h1>
+        <p>
+          打開這個 HTML 檔，找到最上面的 <code>SUPABASE_URL</code> 和{" "}
+          <code>SUPABASE_ANON_KEY</code>，換成你 Supabase 專案的資料。
+          位置在後台的 Project Settings → API。
+        </p>
+        <p>
+          anon key 本來就是要放在瀏覽器裡的公開金鑰，真正擋人的是資料庫的 RLS。
+          不要把 service_role key 貼進來。
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen({ flash, toast }) {
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!email.trim() || !pw) return flash("請填帳號和密碼");
+    setBusy(true);
+    const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+    setBusy(false);
+    if (error) flash("帳號或密碼不對");
+  };
+
+  return (
+    <div className="gate">
+      <div className="box">
+        <h1>庫存管理</h1>
+        <p>要登入才能查看和修改。忘記密碼請找管理者重設。</p>
+        <div className="fields">
+          <div className="fld full">
+            <label>帳號</label>
+            <input
+              type="email" value={email} autoCapitalize="none" autoComplete="username"
+              onChange={(e) => setEmail(e.target.value)} placeholder="ming@likeadream.local"
+            />
+          </div>
+          <div className="fld full">
+            <label>密碼</label>
+            <input
+              type="password" value={pw} autoComplete="current-password"
+              onChange={(e) => setPw(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+            />
+          </div>
+        </div>
+        <button className="btn wide" style={{ marginTop: 16 }} disabled={busy} onClick={submit}>
+          {busy ? "登入中…" : "登入"}
+        </button>
+      </div>
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 庫存                                                                */
+/* ------------------------------------------------------------------ */
+
+function StockPage({ db, reload }) {
+  const now = new Date();
+  const [ym, setYm] = useState(now.getFullYear() + "-" + pad(now.getMonth() + 1));
+  const active = db.items.filter((i) => i.active);
+  const [itemId, setItemId] = useState(active[0] ? active[0].id : "");
+  const [view, setView] = useState("all");
+  const [onlyMoves, setOnlyMoves] = useState(false);
+
+  const parts = ym.split("-");
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const item = db.items.find((i) => i.id === itemId) || active[0];
+  const rows = useMemo(() => (item ? buildMonth(db, item.id, y, m) : []), [db, item, y, m]);
+  const short = useMemo(() => shortageScan(db, y, m), [db, y, m]);
+  const t = today();
+
+  const months = [];
+  for (let k = -1; k <= 6; k++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + k, 1);
+    months.push(d.getFullYear() + "-" + pad(d.getMonth() + 1));
+  }
+  const shown = onlyMoves
+    ? rows.filter((r) => r.fShip || r.sShip || r.fMove || r.sMove || r.date === t || r.fLeft < 0 || r.sLeft < 0)
+    : rows;
+
+  return (
+    <div>
+      <h2 className="pg">庫存</h2>
+      <p className="lede">今天 {t}。訂單照出貨日自動扣帳，每一列是那天結束時剩下的數量。</p>
+
+      {short.length > 0 && (
+        <div className="alertbox">
+          <b>本月有 {short.length} 項會不夠</b>
+          <ul>
+            {short.map((s, i) => (
+              <li key={i}>
+                {mdOf(s.date)}　{LOC_NAME[s.loc]}　{s.item.name}　{fmt(s.qty)} {s.item.unit}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="card">
+        <table>
+          <thead>
+            <tr>
+              <th className="l">品項</th>
+              <th>工廠</th>
+              <th>門市</th>
+              <th>總庫存</th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.length === 0 && (
+              <tr><td className="l faint" colSpan={4}>還沒有品項，到「設定」建立。</td></tr>
+            )}
+            {active.map((it) => {
+              const f = currentQty(db, it.id, "factory");
+              const s = currentQty(db, it.id, "store");
+              return (
+                <tr key={it.id} className={f < 0 || s < 0 ? "bad" : ""}>
+                  <td className="l">{it.name}</td>
+                  <td className={"big " + (f < 0 ? "neg" : "f")}>{fmt(f)}</td>
+                  <td className={"big " + (s < 0 ? "neg" : "s")}>{fmt(s)}</td>
+                  <td className="big">{fmt(f + s)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 className="sec">整月庫存</h3>
+      <div className="fields" style={{ marginBottom: 10 }}>
+        <div className="fld">
+          <label>品項</label>
+          <select value={item ? item.id : ""} onChange={(e) => setItemId(e.target.value)}>
+            {active.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+        </div>
+        <div className="fld">
+          <label>月份</label>
+          <select value={ym} onChange={(e) => setYm(e.target.value)}>
+            {months.map((o) => (
+              <option key={o} value={o}>{o.slice(0, 4)} 年 {Number(o.slice(5))} 月</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="seg" style={{ marginBottom: 10 }}>
+        {[["all", "全部"], ["factory", "工廠"], ["store", "門市"]].map(([id, label]) => (
+          <button key={id} className={view === id ? "on" : ""} onClick={() => setView(id)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="card">
+        {!item ? (
+          <div className="empty">先選一個品項。</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th className="l">日期</th>
+                {view === "all" ? (
+                  <React.Fragment><th>工廠</th><th>門市</th><th>合計</th></React.Fragment>
+                ) : (
+                  <React.Fragment><th>出貨</th><th>剩餘</th></React.Fragment>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => {
+                const bad = (view !== "store" && r.fLeft < 0) || (view !== "factory" && r.sLeft < 0);
+                const past = r.date < t;
+                const single = view === "factory" ? "f" : "s";
+                const ship = view === "factory" ? r.fShip : r.sShip;
+                const move = view === "factory" ? r.fMove : r.sMove;
+                const left = view === "factory" ? r.fLeft : r.sLeft;
+                return (
+                  <tr key={r.date} className={(r.date === t ? "now " : "") + (bad ? "bad" : "")}>
+                    <td className={"l " + (past && !bad ? "gone" : "")}>
+                      <span className="big">{mdOf(r.date)}</span>
+                      <span className="sub">{r.date === t ? "今天" : "週" + weekdayOf(r.date)}</span>
+                    </td>
+                    {view === "all" ? (
+                      <React.Fragment>
+                        <td>
+                          {r.fMove !== 0 && <span className="mv f">{r.fMove > 0 ? "+" : ""}{fmt(r.fMove)}</span>}
+                          <span className={"big " + (r.fLeft < 0 ? "neg" : "f")}> {fmt(r.fLeft)}</span>
+                          {r.fShip > 0 && <span className="sub out">出 {fmt(r.fShip)}</span>}
+                        </td>
+                        <td>
+                          {r.sMove !== 0 && <span className="mv s">{r.sMove > 0 ? "+" : ""}{fmt(r.sMove)}</span>}
+                          <span className={"big " + (r.sLeft < 0 ? "neg" : "s")}> {fmt(r.sLeft)}</span>
+                          {r.sShip > 0 && <span className="sub out">出 {fmt(r.sShip)}</span>}
+                        </td>
+                        <td className="big">{fmt(r.total)}</td>
+                      </React.Fragment>
+                    ) : (
+                      <React.Fragment>
+                        <td className={ship ? "big" : "faint"}>{ship ? fmt(ship) : "—"}</td>
+                        <td>
+                          {move !== 0 && <span className={"mv " + single}>{move > 0 ? "+" : ""}{fmt(move)}</span>}
+                          <span className={"big " + (left < 0 ? "neg" : single)}> {fmt(left)}</span>
+                        </td>
+                      </React.Fragment>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+        <button className="btn ghost mini" onClick={() => setOnlyMoves(!onlyMoves)}>
+          {onlyMoves ? "顯示整個月" : "只看有進出的日子"}
+        </button>
+        <button className="btn ghost mini" onClick={reload}>重新整理</button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 訂單                                                                */
+/* ------------------------------------------------------------------ */
+
+function OrdersPage({ db, me, run, logIt, flash }) {
+  const [editing, setEditing] = useState(null);
+  const [range, setRange] = useState("future");
+  const [kw, setKw] = useState("");
+  const [locF, setLocF] = useState("all");
+  const t = today();
+
+  const nameOf = (id) => {
+    const it = db.items.find((i) => i.id === id);
+    return it ? it.name : "（已刪品項）";
+  };
+
+  const list = useMemo(() =>
+    db.orders.filter((o) => {
+      if (range === "future" && o.date < t) return false;
+      if (range === "past" && o.date >= t) return false;
+      if (locF !== "all" && o.loc !== locF) return false;
+      if (kw) {
+        const hay = (o.customer + " " + (o.extNo || "") + " " + o.no).toLowerCase();
+        if (hay.indexOf(kw.toLowerCase()) === -1) return false;
+      }
+      return true;
+    }), [db.orders, range, kw, locF, t]);
+
+  const remove = async (o) => {
+    const detail = o.lines.map((l) => nameOf(l.itemId) + " " + l.qty).join("、");
+    if (!window.confirm(
+      "刪除 " + o.date + "　" + o.customer + "\n" + LOC_NAME[o.loc] + "｜" + detail +
+      "\n\n庫存表會立刻把這些數量加回去。"
+    )) return;
+    await run(async () => {
+      const { error } = await sb.rpc("delete_order", {
+        p_order_id: o.id,
+        p_summary: o.no + "　" + o.customer + "　" + o.date + "　" + LOC_NAME[o.loc] + "　" + detail,
+        p_snapshot: o,
+      });
+      if (error) throw error;
+    }, "已刪除，內容留在紀錄裡");
+  };
+
+  return (
+    <div>
+      <h2 className="pg">訂單</h2>
+      <p className="lede">輸入就代表會照這天出貨。不出貨就刪掉，刪除內容完整留在紀錄。</p>
+
+      <button className="btn wide" onClick={() => setEditing({ isNew: true })} style={{ marginBottom: 12 }}>
+        新增訂單
+      </button>
+
+      <div className="seg" style={{ marginBottom: 10 }}>
+        {[["future", "今天以後"], ["past", "已過日期"], ["all", "全部"]].map(([id, label]) => (
+          <button key={id} className={range === id ? "on" : ""} onClick={() => setRange(id)}>{label}</button>
+        ))}
+      </div>
+      <div className="fields" style={{ marginBottom: 12 }}>
+        <div className="fld">
+          <label>搜尋客戶或單號</label>
+          <input value={kw} onChange={(e) => setKw(e.target.value)} placeholder="王小姐" />
+        </div>
+        <div className="fld">
+          <label>出貨地點</label>
+          <select value={locF} onChange={(e) => setLocF(e.target.value)}>
+            <option value="all">全部</option>
+            {LOCS.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="card">
+        {list.length === 0 ? (
+          <div className="empty">這個條件下沒有訂單。</div>
+        ) : (
+          <div className="olist">
+            {list.map((o) => (
+              <div className="ord" key={o.id}>
+                <div className="top">
+                  <span className="date">{mdOf(o.date)}</span>
+                  <span className="wd">週{weekdayOf(o.date)}</span>
+                  <span className={"tag " + (o.loc === "factory" ? "f" : "s")}>{LOC_NAME[o.loc]}</span>
+                  <span className="cust">{o.customer}</span>
+                </div>
+                <div>
+                  <div className="lines">
+                    {o.lines.map((l, i) => (
+                      <div key={i}>{nameOf(l.itemId)}　<b>{fmt(l.qty)}</b></div>
+                    ))}
+                  </div>
+                  <div className="no">
+                    {o.extNo ? o.extNo + "　" + o.no : o.no}
+                    {o.editedBy ? "　" + o.editedBy + " 於 " + o.editedAt + " 修改"
+                      : o.createdBy ? "　" + o.createdBy + " 建立" : ""}
+                  </div>
+                </div>
+                <div className="acts">
+                  <button className="btn ghost mini" onClick={() => setEditing(o)}>修改</button>
+                  <button className="btn danger mini" onClick={() => remove(o)}>刪除</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <OrderSheet
+          db={db} me={me} run={run} logIt={logIt} flash={flash}
+          order={editing.isNew ? null : editing}
+          close={() => setEditing(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function OrderSheet({ db, me, run, logIt, flash, order, close }) {
+  const active = db.items.filter((i) => i.active);
+  const [extNo, setExtNo] = useState(order ? order.extNo || "" : "");
+  const [customer, setCustomer] = useState(order ? order.customer : "");
+  const [date, setDate] = useState(order ? order.date : today());
+  const [loc, setLoc] = useState(order ? order.loc : "store");
+  const [lines, setLines] = useState(
+    order ? order.lines.map((l) => ({ itemId: l.itemId, qty: l.qty }))
+          : [{ itemId: active[0] ? active[0].id : "", qty: "" }]
+  );
+  const [busy, setBusy] = useState(false);
+
+  const nameOf = (id) => {
+    const it = db.items.find((i) => i.id === id);
+    return it ? it.name : "";
+  };
+  const setLine = (i, patch) =>
+    setLines(lines.map((l, k) => (k === i ? Object.assign({}, l, patch) : l)));
+
+  const submit = async () => {
+    if (!customer.trim()) return flash("請填客戶名稱");
+    const clean = lines
+      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty) }))
+      .filter((l) => l.itemId && l.qty > 0);
+    if (!clean.length) return flash("至少要有一個品項和數量");
+    const detail = clean.map((l) => nameOf(l.itemId) + " " + l.qty).join("、");
+    setBusy(true);
+
+    const ok = await run(async () => {
+      if (order) {
+        const before = order.customer + "　" + order.date + "　" + LOC_NAME[order.loc] + "　" +
+          order.lines.map((l) => nameOf(l.itemId) + " " + l.qty).join("、");
+        const after = customer + "　" + date + "　" + LOC_NAME[loc] + "　" + detail;
+
+        let r = await sb.from("orders").update({
+          ext_no: extNo || null, customer, ship_date: date, loc,
+          edited_by_name: me.name, edited_at: new Date().toISOString(),
+        }).eq("id", order.id);
+        if (r.error) throw r.error;
+
+        r = await sb.from("order_lines").delete().eq("order_id", order.id);
+        if (r.error) throw r.error;
+        r = await sb.from("order_lines").insert(
+          clean.map((l) => ({ order_id: order.id, item_id: l.itemId, qty: l.qty }))
+        );
+        if (r.error) throw r.error;
+
+        await logIt("修改訂單", order.no + "　改前：" + before + "　→　改後：" + after,
+          { before: order, after: { customer, date, loc, lines: clean } });
+      } else {
+        const ins = await sb.from("orders").insert({
+          ext_no: extNo || null, customer, ship_date: date, loc,
+          created_by: me.id, created_by_name: me.name,
+        }).select().single();
+        if (ins.error) throw ins.error;
+
+        const r = await sb.from("order_lines").insert(
+          clean.map((l) => ({ order_id: ins.data.id, item_id: l.itemId, qty: l.qty }))
+        );
+        if (r.error) throw r.error;
+
+        await logIt("新增訂單",
+          ins.data.no + "　" + customer + "　" + date + "　" + LOC_NAME[loc] + "　" + detail,
+          { id: ins.data.id, no: ins.data.no, customer, date, loc, lines: clean });
+      }
+    }, order ? "已更新" : "已新增");
+
+    setBusy(false);
+    if (ok) close();
+  };
+
+  return (
+    <div className="sheet">
+      <header>{order ? "修改訂單" : "新增訂單"}</header>
+      <div className="inner">
+        <div className="fields">
+          <div className="fld full">
+            <label>客戶名稱</label>
+            <input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="王小姐" />
+          </div>
+          <div className="fld full">
+            <label>原訂單編號</label>
+            <input value={extNo} onChange={(e) => setExtNo(e.target.value)} placeholder="原系統單號，可留白" />
+          </div>
+          <div className="fld full">
+            <label>出貨日期</label>
+            <input type="date" value={date} min={today()} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="fld full">
+            <label>出貨地點</label>
+            <div className="seg">
+              {LOCS.map((l) => (
+                <button key={l.id} className={loc === l.id ? "on" : ""} onClick={() => setLoc(l.id)}>
+                  {l.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="fld full" style={{ margin: "14px 0 6px" }}>
+          <label>訂單品項</label>
+        </div>
+        {lines.map((l, i) => (
+          <div className="row" key={i}>
+            <select value={l.itemId} onChange={(e) => setLine(i, { itemId: e.target.value })}>
+              {active.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+            </select>
+            <input
+              type="number" inputMode="numeric" min="1" value={l.qty} placeholder="數量"
+              onChange={(e) => setLine(i, { qty: e.target.value })}
+            />
+            <button className="btn ghost mini" disabled={lines.length === 1}
+              onClick={() => setLines(lines.filter((_, k) => k !== i))}>移除</button>
+          </div>
+        ))}
+        <button className="btn ghost mini"
+          onClick={() => setLines(lines.concat([{ itemId: active[0] ? active[0].id : "", qty: "" }]))}>
+          再加一個品項
+        </button>
+      </div>
+      <footer>
+        <button className="btn ghost" onClick={close}>取消</button>
+        <button className="btn" disabled={busy} onClick={submit}>
+          {busy ? "儲存中…" : order ? "儲存" : "新增"}
+        </button>
+      </footer>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 作業                                                                */
+/* ------------------------------------------------------------------ */
+
+function OpsPage({ db, me, run, logIt, flash }) {
+  const [tab, setTab] = useState("in");
+  const active = db.items.filter((i) => i.active);
+  const [loc, setLoc] = useState("factory");
+  const [item, setItem] = useState(active[0] ? active[0].id : "");
+  const [qty, setQty] = useState("");
+  const [note, setNote] = useState("");
+
+  const nameOf = (id) => {
+    const it = db.items.find((i) => i.id === id);
+    return it ? it.name : "";
+  };
+  const reset = () => { setQty(""); setNote(""); };
+  const before = item ? currentQty(db, item, loc) : 0;
+  const n = Number(qty) || 0;
+  const to = loc === "factory" ? "store" : "factory";
+
+  const base = { loc, item_id: item, operator_id: me.id, operator_name: me.name, entry_date: today() };
+
+  const doIn = async () => {
+    if (!item) return flash("請選品項");
+    if (!(n > 0)) return flash("請填數量");
+    const ok = await run(async () => {
+      const r = await sb.from("stock_entries").insert(Object.assign({}, base, {
+        qty: n, type: "in", before_qty: before, after_qty: before + n, note: note || null,
+      }));
+      if (r.error) throw r.error;
+      await logIt("入庫", LOC_NAME[loc] + "　" + nameOf(item) + "　+" + n + (note ? "　" + note : ""));
+    }, "入庫完成");
+    if (ok) reset();
+  };
+
+  const doTransfer = async () => {
+    if (!item) return flash("請選品項");
+    if (!(n > 0)) return flash("請填數量");
+    const bTo = currentQty(db, item, to);
+    const tid = crypto.randomUUID();
+    const ok = await run(async () => {
+      const r = await sb.from("stock_entries").insert([
+        Object.assign({}, base, {
+          qty: -n, type: "transfer_out", before_qty: before, after_qty: before - n,
+          note: note || null, transfer_id: tid,
+        }),
+        Object.assign({}, base, {
+          loc: to, qty: n, type: "transfer_in", before_qty: bTo, after_qty: bTo + n,
+          note: note || null, transfer_id: tid,
+        }),
+      ]);
+      if (r.error) throw r.error;
+      await logIt("調撥", nameOf(item) + "　" + LOC_NAME[loc] + " → " + LOC_NAME[to] + "　" + n + (note ? "　" + note : ""));
+    }, "調撥完成，總庫存不變");
+    if (ok) reset();
+  };
+
+  const doAdjust = async () => {
+    if (!item) return flash("請選品項");
+    if (!n) return flash("請填調整量，短少填負數");
+    if (!note.trim()) return flash("請填原因");
+    const ok = await run(async () => {
+      const r = await sb.from("stock_entries").insert(Object.assign({}, base, {
+        qty: n, type: "adjust", before_qty: before, after_qty: before + n, note: note,
+      }));
+      if (r.error) throw r.error;
+      await logIt("盤點調整", LOC_NAME[loc] + "　" + nameOf(item) + "　" + (n > 0 ? "+" : "") + n + "　" + note);
+    }, "已調整");
+    if (ok) reset();
+  };
+
+  const recent = db.entries.slice().reverse().slice(0, 10);
+
+  return (
+    <div>
+      <h2 className="pg">庫存作業</h2>
+      <p className="lede">全部記在今天（{today()}），送出後立刻改變庫存，不能補登過去的日期。</p>
+
+      <div className="tabs">
+        {[["in", "入庫"], ["transfer", "調撥"], ["adjust", "盤點調整"]].map(([id, label]) => (
+          <button key={id} className={tab === id ? "on" : ""} onClick={() => { setTab(id); reset(); }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="card pad">
+        <div className="fields">
+          <div className="fld full">
+            <label>{tab === "transfer" ? "從哪裡出" : "地點"}</label>
+            <div className="seg">
+              {LOCS.map((l) => (
+                <button key={l.id} className={loc === l.id ? "on" : ""} onClick={() => setLoc(l.id)}>
+                  {l.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="fld full">
+            <label>品項</label>
+            <select value={item} onChange={(e) => setItem(e.target.value)}>
+              {active.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+          </div>
+          <div className="fld full">
+            <label>{tab === "in" ? "包裝完成數量" : tab === "transfer" ? "調撥數量" : "調整量，短少填 -5"}</label>
+            <input type="number" inputMode={tab === "adjust" ? "text" : "numeric"}
+              value={qty} onChange={(e) => setQty(e.target.value)} />
+          </div>
+          <div className="fld full">
+            <label>{tab === "adjust" ? "原因" : "備註"}</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)}
+              placeholder={tab === "adjust" ? "9/3 盤點短少 5 包" : "可留白"} />
+          </div>
+        </div>
+
+        <p className="note">
+          {tab === "transfer"
+            ? LOC_NAME[loc] + "目前 " + fmt(before) + (n ? "　→　調撥後 " + fmt(before - n) : "") + "。總庫存不變。"
+            : LOC_NAME[loc] + "目前 " + fmt(before) + (n ? "　→　之後 " + fmt(before + n) : "")}
+        </p>
+        {tab === "transfer" && n > before && (
+          <p className="note warn">調撥量超過{LOC_NAME[loc]}現有庫存，送出後會變負數。</p>
+        )}
+        {tab === "adjust" && <p className="note">系統剛開始用的時候，在這裡把現有數量輸進去就是開帳。</p>}
+
+        <button className="btn wide" style={{ marginTop: 14 }}
+          onClick={tab === "in" ? doIn : tab === "transfer" ? doTransfer : doAdjust}>
+          {tab === "in" ? "入庫" : tab === "transfer" ? "調撥到" + LOC_NAME[to] : "調整"}
+        </button>
+      </div>
+
+      <h3 className="sec">最近的異動</h3>
+      <div className="card">
+        {recent.length === 0 ? (
+          <div className="empty">還沒有任何異動。</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th className="l">時間</th><th className="l">品項</th><th className="l">類型</th>
+                <th>異動</th><th>之後</th><th className="l">誰</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((e) => (
+                <tr key={e.id}>
+                  <td className="l faint">{e.ts}</td>
+                  <td className="l">{nameOf(e.itemId)}<span className="sub">{LOC_NAME[e.loc]}</span></td>
+                  <td className="l">{ENTRY_LABEL[e.type]}</td>
+                  <td className="big">{e.qty > 0 ? "+" : ""}{fmt(e.qty)}</td>
+                  <td className="big">{fmt(e.after)}</td>
+                  <td className="l">{e.operator}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 設定                                                                */
+/* ------------------------------------------------------------------ */
+
+function SettingsPage(ctx) {
+  const [tab, setTab] = useState("items");
+  return (
+    <div>
+      <h2 className="pg">設定</h2>
+      <div className="tabs">
+        <button className={tab === "items" ? "on" : ""} onClick={() => setTab("items")}>品項</button>
+        <button className={tab === "users" ? "on" : ""} onClick={() => setTab("users")}>帳號</button>
+      </div>
+      {tab === "items" ? <ItemsPanel {...ctx} /> : <UsersPanel {...ctx} />}
+    </div>
+  );
+}
+
+function ItemsPanel({ db, run, logIt, flash }) {
+  const [sku, setSku] = useState("");
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState("包");
+
+  const add = async () => {
+    if (!sku.trim() || !name.trim()) return flash("請填編號和名稱");
+    const ok = await run(async () => {
+      const r = await sb.from("items").insert({
+        sku: sku.trim(), name: name.trim(), unit: unit.trim() || "包",
+      });
+      if (r.error) throw r.error;
+      await logIt("新增品項", sku.trim() + "　" + name.trim() + "　" + (unit.trim() || "包"));
+    }, "已新增");
+    if (ok) { setSku(""); setName(""); }
+  };
+
+  const toggle = async (it) => {
+    await run(async () => {
+      const r = await sb.from("items").update({ active: !it.active }).eq("id", it.id);
+      if (r.error) throw r.error;
+      await logIt(it.active ? "停用品項" : "啟用品項", it.sku + "　" + it.name);
+    });
+  };
+
+  return (
+    <div>
+      <p className="lede">單位一律用包。不用的品項改成停用，不要刪掉，歷史紀錄還要靠它。</p>
+      <div className="card pad" style={{ marginBottom: 12 }}>
+        <div className="fields">
+          <div className="fld">
+            <label>編號</label>
+            <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="B004" />
+          </div>
+          <div className="fld">
+            <label>單位</label>
+            <input value={unit} onChange={(e) => setUnit(e.target.value)} />
+          </div>
+          <div className="fld full">
+            <label>名稱</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="蔓越莓餅乾" />
+          </div>
+        </div>
+        <button className="btn wide" style={{ marginTop: 12 }} onClick={add}>新增品項</button>
+      </div>
+
+      <div className="card">
+        <table>
+          <thead>
+            <tr><th className="l">品項</th><th>工廠</th><th>門市</th><th></th></tr>
+          </thead>
+          <tbody>
+            {db.items.map((it) => (
+              <tr key={it.id}>
+                <td className="l">
+                  {it.name}
+                  <span className="sub">{it.sku}　{it.active ? it.unit : "已停用"}</span>
+                </td>
+                <td className="big f">{fmt(currentQty(db, it.id, "factory"))}</td>
+                <td className="big s">{fmt(currentQty(db, it.id, "store"))}</td>
+                <td>
+                  <button className="btn ghost mini" onClick={() => toggle(it)}>
+                    {it.active ? "停用" : "啟用"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function UsersPanel({ db, me, run, logIt, flash }) {
+  const [pw1, setPw1] = useState("");
+  const isAdmin = me.role === "admin";
+
+  const changePw = async () => {
+    if (pw1.length < 6) return flash("新密碼至少 6 個字");
+    const { error } = await sb.auth.updateUser({ password: pw1 });
+    if (error) return flash("改不了：" + error.message);
+    setPw1("");
+    flash("密碼已更新");
+  };
+
+  const rename = async (u) => {
+    const nv = window.prompt("這個人在紀錄上顯示的名字", u.name);
+    if (!nv || !nv.trim()) return;
+    await run(async () => {
+      const r = await sb.from("app_users").update({ name: nv.trim() }).eq("id", u.id);
+      if (r.error) throw r.error;
+      await logIt("修改帳號名稱", u.name + " → " + nv.trim());
+    }, "已更新");
+  };
+
+  const setRole = async (u) => {
+    const next = u.role === "admin" ? "staff" : "admin";
+    await run(async () => {
+      const r = await sb.from("app_users").update({ role: next }).eq("id", u.id);
+      if (r.error) throw r.error;
+      await logIt("修改身分", u.name + " → " + (next === "admin" ? "管理者" : "一般"));
+    });
+  };
+
+  const toggle = async (u) => {
+    if (u.id === me.id) return flash("不能停用自己");
+    await run(async () => {
+      const r = await sb.from("app_users").update({ active: !u.active }).eq("id", u.id);
+      if (r.error) throw r.error;
+      await logIt(u.active ? "停用帳號" : "啟用帳號", u.name);
+    });
+  };
+
+  return (
+    <div>
+      <p className="lede">
+        帳號在 Supabase 後台的 Authentication 新增，第一次登入後會自動出現在這裡，再改顯示名稱和身分。
+      </p>
+
+      <div className="card pad" style={{ marginBottom: 12 }}>
+        <h3 className="sec" style={{ marginTop: 0 }}>改我的密碼</h3>
+        <div className="fld full">
+          <label>新密碼，至少 6 個字</label>
+          <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} />
+        </div>
+        <button className="btn ghost wide" style={{ marginTop: 12 }} onClick={changePw}>更新密碼</button>
+      </div>
+
+      <div className="card">
+        <table>
+          <thead>
+            <tr><th className="l">帳號</th><th className="l">身分</th>{isAdmin && <th></th>}</tr>
+          </thead>
+          <tbody>
+            {db.users.map((u) => (
+              <tr key={u.id}>
+                <td className="l">
+                  {u.name}{u.id === me.id && <span className="faint">（你）</span>}
+                  <span className="sub">{u.active ? "" : "已停用"}</span>
+                </td>
+                <td className="l">
+                  {u.role === "admin" ? <span className="tag admin">管理者</span> : "一般"}
+                </td>
+                {isAdmin && (
+                  <td>
+                    <button className="btn ghost mini" onClick={() => rename(u)}>改名</button>{" "}
+                    <button className="btn ghost mini" onClick={() => setRole(u)}>
+                      {u.role === "admin" ? "降為一般" : "設為管理者"}
+                    </button>{" "}
+                    <button className="btn ghost mini" onClick={() => toggle(u)}>
+                      {u.active ? "停用" : "啟用"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!isAdmin && <p className="note">要開新帳號或改別人的資料，請管理者處理。</p>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 紀錄                                                                */
+/* ------------------------------------------------------------------ */
+
+function LogsPage({ db }) {
+  const [tab, setTab] = useState("entries");
+  const [who, setWho] = useState("all");
+  const nameOf = (id) => {
+    const it = db.items.find((i) => i.id === id);
+    return it ? it.name : "（已刪品項）";
+  };
+  const entries = useMemo(
+    () => db.entries.slice().reverse().filter((e) => who === "all" || e.userId === who),
+    [db.entries, who]
+  );
+  const logs = useMemo(
+    () => db.logs.filter((l) => who === "all" || l.userId === who),
+    [db.logs, who]
+  );
+
+  return (
+    <div>
+      <h2 className="pg">紀錄</h2>
+      <p className="lede">庫存對不起來的時候從這裡查。刪掉的訂單內容完整留在操作紀錄。</p>
+
+      <div className="fields" style={{ marginBottom: 12 }}>
+        <div className="fld">
+          <label>只看某個人做的</label>
+          <select value={who} onChange={(e) => setWho(e.target.value)}>
+            <option value="all">全部人</option>
+            {db.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {[["entries", "庫存異動"], ["ops", "操作紀錄"]].map(([id, label]) => (
+          <button key={id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      <div className="card">
+        {tab === "entries" ? (
+          entries.length === 0 ? (
+            <div className="empty">沒有符合的庫存異動。</div>
+          ) : (
+            <div className="scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="l">時間</th><th className="l">品項</th><th className="l">類型</th>
+                    <th>異動</th><th>前</th><th>後</th><th className="l">誰</th><th className="l">備註</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((e) => (
+                    <tr key={e.id}>
+                      <td className="l faint">{e.ts}</td>
+                      <td className="l">{nameOf(e.itemId)}<span className="sub">{LOC_NAME[e.loc]}</span></td>
+                      <td className="l">{ENTRY_LABEL[e.type]}</td>
+                      <td className="big">{e.qty > 0 ? "+" : ""}{fmt(e.qty)}</td>
+                      <td className="faint">{fmt(e.before)}</td>
+                      <td className="big">{fmt(e.after)}</td>
+                      <td className="l">{e.operator}</td>
+                      <td className="l faint">{e.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : logs.length === 0 ? (
+          <div className="empty">沒有符合的操作紀錄。</div>
+        ) : (
+          <div className="olist">
+            {logs.map((l) => (
+              <div className="ord" key={l.id} style={{ display: "block" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline", marginBottom: 3 }}>
+                  <b style={{ fontSize: 13.5 }}>{l.action}</b>
+                  <span className="wd" style={{ fontWeight: 600 }}>{l.operator}</span>
+                  <span className="wd" style={{ marginLeft: "auto", color: "#a8b0b7" }}>{l.ts}</span>
+                </div>
+                <div style={{ fontSize: 13, color: "#67727e", lineHeight: 1.6 }}>{l.summary}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
