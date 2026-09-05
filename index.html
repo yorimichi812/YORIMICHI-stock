@@ -15,97 +15,176 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin:0; padding:0; }
 body {
-  --ink:#1b2430; --soft:#67727e; --faint:#a8b0b7;
-  --paper:#f2f4f1; --card:#fff; --rule:#dfe3de; --hair:#eef0ec;
-  --factory:#0f6e5c; --factory-bg:#e6f1ee;
-  --store:#a85f0b; --store-bg:#fbf0df;
-  --alert:#bb332b; --alert-bg:#fdeceb;
+  --ink:#2a2f2b; --soft:#6d766e; --faint:#a4aca5;
+  --cream:#f6f3ec; --card:#fff; --rule:#e5e1d6; --hair:#f0ede4;
+  --green:#2f4a3a; --green-d:#263d2f; --green-l:#3b5b48;
+  --sand:#efe9da; --amber:#c8973a;
+  --factory:#1f6b52; --factory-bg:#e8f1ed;
+  --store:#a86410; --store-bg:#fbf1df;
+  --alert:#b8362c; --alert-bg:#fbeae8;
   font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
-  color:var(--ink); background:var(--paper);
+  color:var(--ink); background:var(--cream);
   font-variant-numeric:tabular-nums; font-feature-settings:"tnum";
   min-height:100vh; -webkit-text-size-adjust:100%;
 }
 button { font-family:inherit; cursor:pointer; }
 input, select { font-family:inherit; font-size:16px; color:var(--ink); font-variant-numeric:tabular-nums; }
-:focus-visible { outline:2px solid var(--ink); outline-offset:1px; border-radius:4px; }
+:focus-visible { outline:2px solid var(--green); outline-offset:1px; border-radius:4px; }
+.boot { padding:60px; text-align:center; color:var(--soft); }
 
-.hd { position:sticky; top:0; z-index:20; background:var(--card);
-  border-bottom:1px solid var(--rule); padding:10px 14px; display:flex; align-items:center; gap:10px; }
-.hd .t { font-weight:700; font-size:15px; }
-.dot { width:7px; height:7px; border-radius:50%; flex:none; }
+/* ---------- 版面 ---------- */
+.shell { display:flex; min-height:100vh; }
+.side { width:230px; flex:none; background:var(--green); color:#e9efe9;
+  display:flex; flex-direction:column; position:sticky; top:0; height:100vh; }
+.brand { display:flex; align-items:center; gap:11px; padding:20px 18px 22px; }
+.brand .mark { width:34px; height:34px; border-radius:9px; background:var(--sand);
+  color:var(--green); display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:16px; flex:none; }
+.brand .bn { font-size:15px; font-weight:700; color:#fff; letter-spacing:.02em; }
+.brand .bs { font-size:11.5px; color:#9db3a4; margin-top:2px; }
+
+.menu { padding:0 12px; display:flex; flex-direction:column; gap:3px; }
+.menu button { display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+  border:0; background:none; color:#c3d2c7; font-size:14px; padding:11px 13px;
+  border-radius:9px; min-height:44px; }
+.menu button:hover { background:var(--green-l); color:#fff; }
+.menu button.on { background:var(--sand); color:var(--green-d); font-weight:700; }
+.menu .ic { font-size:15px; width:18px; text-align:center; }
+
+.sfoot { margin-top:auto; padding:16px 18px 20px; border-top:1px solid rgba(255,255,255,.09); }
+.sme { font-size:13px; color:#e9efe9; font-weight:600; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.badge { font-size:10.5px; background:rgba(255,255,255,.14); padding:2px 6px; border-radius:4px; font-weight:500; }
+.signout { margin-top:9px; border:1px solid rgba(255,255,255,.2); background:none;
+  color:#b9c9bd; font-size:12.5px; padding:6px 12px; border-radius:7px; }
+.signout:hover { background:var(--green-l); color:#fff; }
+
+.mainwrap { flex:1; min-width:0; display:flex; flex-direction:column; }
+.topbar { background:var(--card); border-bottom:1px solid var(--rule);
+  padding:13px 22px; display:flex; align-items:center; gap:14px; position:sticky; top:0; z-index:15; }
+.burger { display:none; border:0; background:none; font-size:19px; padding:4px 8px; }
+.crumb { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.crumb span { font-size:11.5px; color:var(--faint); }
+.crumb b { font-size:16px; font-weight:700; }
+.sync { margin-left:auto; font-size:11.5px; color:var(--faint); display:flex; align-items:center; gap:6px; }
+.dot { width:7px; height:7px; border-radius:50%; }
 .dot.ok { background:var(--factory); }
-.dot.saving { background:#c99a1e; }
+.dot.saving { background:var(--amber); }
 .dot.err { background:var(--alert); }
-.sync { font-size:11.5px; color:var(--faint); display:flex; align-items:center; gap:5px; }
-.hd .who { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12.5px; }
-.hd .who b { font-weight:600; }
-.linkbtn { border:0; background:none; color:var(--soft); font-size:12.5px; text-decoration:underline; padding:6px 2px; }
+.scrim { display:none; }
 
-main.body { padding:14px 12px 92px; max-width:1080px; margin:0 auto; }
-h2.pg { font-size:18px; font-weight:700; margin:0 0 3px; }
-p.lede { margin:0 0 14px; font-size:12.5px; color:var(--soft); line-height:1.6; }
-h3.sec { font-size:13px; font-weight:700; margin:22px 0 8px; }
+.body { padding:20px 22px 60px; max-width:1500px; }
 
-.card { background:var(--card); border:1px solid var(--rule); border-radius:10px; overflow:hidden; }
-.card + .card { margin-top:12px; }
-.pad { padding:14px; }
+/* ---------- 月份切換與膠囊 ---------- */
+.pager { display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:16px; }
+.pg { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:8px 15px; border-radius:8px; font-size:13.5px; min-height:40px; }
+.pg:hover { background:var(--hair); }
+.pgnow { font-size:16px; font-weight:700; min-width:120px; text-align:center; }
 
+.pills { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+.pills button { border:1px solid var(--rule); background:var(--card); color:var(--soft);
+  padding:8px 18px; border-radius:9px; font-size:13.5px; min-height:40px; }
+.pills button.on { background:var(--green); border-color:var(--green); color:#fff; font-weight:700; }
+.pills .pill-ghost { margin-left:auto; color:var(--soft); }
+
+/* ---------- 卡片 ---------- */
+.card { background:var(--card); border:1px solid var(--rule); border-radius:12px;
+  overflow:hidden; margin-bottom:14px; }
+.chead { display:flex; align-items:center; gap:10px; padding:14px 16px;
+  border-bottom:1px solid var(--hair); cursor:pointer; }
+.chead h3 { margin:0; font-size:14.5px; font-weight:700; }
+.chead .meta { font-size:12px; color:var(--faint); }
+.chead .chev { margin-left:auto; color:var(--faint); font-size:13px; }
+.mark-dot { width:8px; height:8px; border-radius:50%; background:var(--factory); flex:none; }
+.pad { padding:16px; }
+
+/* ---------- 一般表格 ---------- */
 table { width:100%; border-collapse:collapse; font-size:14px; }
-th { font-size:11px; font-weight:600; color:var(--soft); text-align:right;
-  padding:8px; background:#fafbfa; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th { font-size:11.5px; font-weight:600; color:var(--soft); text-align:right;
+  padding:9px 10px; background:#fbfaf6; border-bottom:1px solid var(--rule); white-space:nowrap; }
 th.l, td.l { text-align:left; }
-td { padding:9px 8px; text-align:right; border-bottom:1px solid var(--hair); white-space:nowrap; }
+td { padding:10px; text-align:right; border-bottom:1px solid var(--hair); white-space:nowrap; }
 tbody tr:last-child td { border-bottom:0; }
 .f { color:var(--factory); }
 .s { color:var(--store); }
-.big { font-weight:600; font-size:15px; }
+.big { font-weight:700; font-size:15px; }
 .sub { display:block; font-size:11px; color:var(--faint); margin-top:1px; }
-.sub.out { color:var(--alert); }
-.mv { font-size:10.5px; padding:1px 4px; border-radius:3px; font-weight:600; }
-.mv.f { background:var(--factory-bg); }
-.mv.s { background:var(--store-bg); }
 .faint { color:var(--faint); }
-.tag { display:inline-block; font-size:11.5px; padding:2px 7px; border-radius:4px; font-weight:600; }
+.neg { color:var(--alert) !important; font-weight:700; }
+.tag { display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:5px; font-weight:600; }
 .tag.f { background:var(--factory-bg); color:var(--factory); }
 .tag.s { background:var(--store-bg); color:var(--store); }
-.tag.admin { background:#e9ecf3; color:#3f4b60; }
-tr.now td { background:#f6f8f7; }
-tr.now td:first-child { box-shadow:inset 3px 0 0 var(--ink); }
-tr.bad td { background:var(--alert-bg); }
-.neg { color:var(--alert); font-weight:700; }
-td.gone { color:#b9c0c5; }
+.tag.admin { background:var(--sand); color:var(--green-d); }
+.scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
-.btn { border:1px solid var(--ink); background:var(--ink); color:#fff;
-  padding:11px 16px; border-radius:8px; font-size:14px; font-weight:600; min-height:44px; }
+/* ---------- 矩陣表：品項當列、日期當欄 ---------- */
+.matrix { overflow:auto; max-height:70vh; -webkit-overflow-scrolling:touch; }
+.matrix table { border-collapse:separate; border-spacing:0; }
+.matrix th, .matrix td { border-bottom:1px solid var(--hair); }
+.matrix thead th { position:sticky; top:0; z-index:3; background:#fbfaf6;
+  text-align:center; font-size:12px; color:var(--ink); font-weight:700;
+  padding:8px 6px; min-width:66px; border-bottom:1px solid var(--rule); }
+.matrix thead th span { display:block; font-size:10.5px; color:var(--faint); font-weight:400; margin-top:1px; }
+.matrix .stick { position:sticky; left:0; z-index:2; background:#fbfaf6;
+  min-width:140px; max-width:140px; text-align:left; font-size:13px;
+  font-weight:600; color:var(--ink); padding:8px 12px;
+  border-right:1px solid var(--rule); white-space:normal; line-height:1.35; }
+.matrix thead .stick { z-index:4; }
+.matrix tbody tr:nth-child(odd) .stick { background:#f4f2ea; }
+.matrix td { padding:6px 6px; text-align:center; background:var(--card); }
+.matrix .todaycol { background:#f2f6f2; }
+.matrix thead th.todaycol { background:#e7efe8; color:var(--green); }
+.matrix td.badcell { background:var(--alert-bg); }
+.cl { font-size:13.5px; line-height:1.5; white-space:nowrap; }
+.cl + .cl { border-top:1px dotted var(--hair); margin-top:2px; padding-top:2px; }
+.cl b { font-weight:700; }
+.cl.f b { color:var(--factory); }
+.cl.s b { color:var(--store); }
+.cl.neg b { color:var(--alert); }
+.cl i { font-style:normal; font-size:10px; margin-right:4px; padding:0 3px;
+  border-radius:3px; vertical-align:1px; }
+.cl i.out { color:var(--alert); background:var(--alert-bg); }
+.cl i.in { color:var(--factory); background:var(--factory-bg); }
+
+/* ---------- 表單 ---------- */
+.btn { border:1px solid var(--green); background:var(--green); color:#fff;
+  padding:11px 17px; border-radius:9px; font-size:14px; font-weight:600; min-height:44px; }
+.btn:hover { background:var(--green-d); }
 .btn.ghost { background:none; color:var(--ink); border-color:var(--rule); font-weight:500; }
-.btn.danger { background:none; color:var(--alert); border-color:#e8c8c5; }
-.btn.mini { padding:7px 12px; min-height:36px; font-size:13px; }
+.btn.ghost:hover { background:var(--hair); }
+.btn.danger { background:none; color:var(--alert); border-color:#e6c6c2; }
+.btn.mini { padding:7px 13px; min-height:36px; font-size:13px; }
 .btn.wide { width:100%; }
 .btn:disabled { opacity:.4; }
 
-.seg { display:flex; border:1px solid var(--rule); border-radius:8px; overflow:hidden; background:var(--card); }
+.seg { display:flex; border:1px solid var(--rule); border-radius:9px; overflow:hidden; background:var(--card); }
 .seg button { flex:1; border:0; background:none; padding:10px 6px; font-size:13.5px;
-  color:var(--soft); min-height:42px; white-space:nowrap; }
+  color:var(--soft); min-height:44px; white-space:nowrap; }
 .seg button + button { border-left:1px solid var(--rule); }
-.seg button.on { background:var(--ink); color:#fff; font-weight:600; }
+.seg button.on { background:var(--green); color:#fff; font-weight:700; }
 
-.fields { display:flex; flex-wrap:wrap; gap:10px; }
-.fld { display:flex; flex-direction:column; gap:4px; flex:1 1 130px; min-width:0; }
+.fields { display:flex; flex-wrap:wrap; gap:11px; }
+.fld { display:flex; flex-direction:column; gap:5px; flex:1 1 140px; min-width:0; }
 .fld.full { flex-basis:100%; }
 .fld label { font-size:11.5px; color:var(--soft); }
-.fld input, .fld select { padding:10px; border:1px solid var(--rule); border-radius:8px;
+.fld input, .fld select { padding:10px 11px; border:1px solid var(--rule); border-radius:9px;
   background:var(--card); width:100%; min-height:44px; }
 
-.note { font-size:12px; color:var(--soft); line-height:1.65; margin:10px 0 0; }
+.note { font-size:12px; color:var(--soft); line-height:1.7; margin:8px 2px 0; }
 .note.warn { color:var(--alert); }
-.alertbox { background:var(--alert-bg); border:1px solid #eecfcc; border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+.alertbox { background:var(--alert-bg); border:1px solid #eed3cf; border-radius:11px;
+  padding:13px 15px; margin-bottom:14px; }
 .alertbox b { font-size:13.5px; }
-.alertbox ul { margin:6px 0 0; padding-left:17px; font-size:13px; }
+.alertbox ul { margin:7px 0 0; padding-left:18px; font-size:13px; }
 .alertbox li { margin:3px 0; }
-.empty { padding:32px 14px; text-align:center; color:var(--soft); font-size:13.5px; }
+.empty { padding:34px 14px; text-align:center; color:var(--soft); font-size:13.5px; }
+h2.pg2 { font-size:17px; font-weight:700; margin:0 0 4px; }
+p.lede { margin:0 0 15px; font-size:12.5px; color:var(--soft); line-height:1.7; }
+h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 
+/* ---------- 訂單卡 ---------- */
 .olist { display:flex; flex-direction:column; }
-.ord { padding:13px 14px; border-bottom:1px solid var(--hair); }
+.ord { padding:14px 16px; border-bottom:1px solid var(--hair); }
 .ord:last-child { border-bottom:0; }
 .ord .top { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
 .ord .date { font-size:17px; font-weight:700; }
@@ -114,56 +193,67 @@ td.gone { color:#b9c0c5; }
 .ord .lines { font-size:13.5px; color:var(--soft); line-height:1.75; }
 .ord .lines b { color:var(--ink); }
 .ord .no { font-size:11.5px; color:var(--faint); margin-top:5px; }
-.ord .acts { display:flex; gap:8px; margin-top:9px; }
+.ord .acts { display:flex; gap:8px; margin-top:10px; }
 
-.tabbar { position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex;
-  background:var(--card); border-top:1px solid var(--rule); padding-bottom:env(safe-area-inset-bottom); }
-.tabbar button { flex:1; border:0; background:none; padding:9px 2px 10px; font-size:11.5px;
-  color:var(--soft); display:flex; flex-direction:column; align-items:center; gap:3px; min-height:54px; }
-.tabbar button.on { color:var(--ink); font-weight:700; }
-.tabbar .ic { font-size:17px; line-height:1; }
-
-.tabs { display:flex; gap:16px; border-bottom:1px solid var(--rule); margin-bottom:14px; }
+.tabs { display:flex; gap:18px; border-bottom:1px solid var(--rule); margin-bottom:15px; }
 .tabs button { border:0; background:none; padding:9px 0; font-size:14px; color:var(--soft);
   border-bottom:2px solid transparent; margin-bottom:-1px; min-height:42px; }
-.tabs button.on { color:var(--ink); font-weight:700; border-bottom-color:var(--ink); }
+.tabs button.on { color:var(--green); font-weight:700; border-bottom-color:var(--green); }
 
-.sheet { position:fixed; inset:0; z-index:60; background:var(--paper); display:flex; flex-direction:column; }
-.sheet header { background:var(--card); border-bottom:1px solid var(--rule); padding:12px 14px; font-weight:700; font-size:15px; }
-.sheet .inner { flex:1; overflow:auto; padding:14px; }
+.sheet { position:fixed; inset:0; z-index:60; background:var(--cream); display:flex; flex-direction:column; }
+.sheet header { background:var(--card); border-bottom:1px solid var(--rule);
+  padding:13px 16px; font-weight:700; font-size:15px; }
+.sheet .inner { flex:1; overflow:auto; padding:16px; }
 .sheet footer { background:var(--card); border-top:1px solid var(--rule);
-  padding:12px 14px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:10px; }
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:10px; }
 .sheet footer .btn { flex:1; }
-.row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-.row select { flex:1; min-width:0; padding:10px; border:1px solid var(--rule); border-radius:8px; min-height:44px; background:var(--card); }
-.row input { width:88px; padding:10px; border:1px solid var(--rule); border-radius:8px; min-height:44px; }
+.row { display:flex; gap:8px; align-items:center; margin-bottom:9px; }
+.row select { flex:1; min-width:0; padding:10px; border:1px solid var(--rule);
+  border-radius:9px; min-height:44px; background:var(--card); }
+.row input { width:92px; padding:10px; border:1px solid var(--rule); border-radius:9px; min-height:44px; }
 
-.toast { position:fixed; left:50%; bottom:76px; transform:translateX(-50%);
-  background:var(--ink); color:#fff; padding:10px 18px; border-radius:8px;
+.toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+  background:var(--green-d); color:#fff; padding:11px 20px; border-radius:9px;
   font-size:13.5px; z-index:90; max-width:88%; text-align:center; }
-.scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
 .gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px; }
 .gate .box { width:100%; max-width:360px; }
-.gate h1 { font-size:20px; font-weight:700; margin:0 0 6px; }
+.gate h1 { font-size:21px; font-weight:700; margin:0 0 6px; }
 .gate p { font-size:13px; color:var(--soft); line-height:1.7; margin:0 0 18px; }
-.gate code { background:#e7eae6; padding:1px 5px; border-radius:4px; font-size:12px; }
+.gate code { background:var(--sand); padding:1px 5px; border-radius:4px; font-size:12px; }
 
-@media (min-width:760px) {
-  main.body { padding:22px 24px 40px; }
-  .tabbar { position:static; border-top:0; border-bottom:1px solid var(--rule); justify-content:flex-start; }
-  .tabbar button { flex:0 0 auto; flex-direction:row; gap:7px; padding:12px 20px; font-size:14px; }
-  .tabbar button.on { box-shadow:inset 0 -2px 0 var(--ink); }
-  .ord { display:grid; grid-template-columns:120px 1fr auto; align-items:start; gap:16px; }
-  .ord .top { margin-bottom:0; flex-direction:column; align-items:flex-start; gap:2px; }
-  .ord .cust { margin-left:0; }
-  .ord .acts { margin-top:0; }
-  .fld { flex:0 1 170px; }
+.tabbar { display:none; }
+
+/* ---------- 手機 ---------- */
+@media (max-width:860px) {
+  .side { position:fixed; left:0; top:0; z-index:70; transform:translateX(-100%);
+    transition:transform .18s ease; height:100vh; }
+  .side.open { transform:translateX(0); }
+  .scrim { display:block; position:fixed; inset:0; background:rgba(20,30,24,.45); z-index:65; }
+  .burger { display:block; }
+  .topbar { padding:11px 14px; }
+  .body { padding:14px 12px 88px; }
+  .pgnow { font-size:15px; min-width:96px; }
+  .pg { padding:8px 12px; font-size:13px; }
+  .matrix { max-height:64vh; }
+  .matrix .stick { min-width:96px; max-width:96px; font-size:12px; padding:7px 8px; }
+  .matrix thead th { min-width:60px; font-size:11.5px; }
+  .cl { font-size:12.5px; }
+  .ord .top { flex-wrap:wrap; }
+  .toast { bottom:76px; }
+  .tabbar { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:var(--card); border-top:1px solid var(--rule);
+    padding-bottom:env(safe-area-inset-bottom); }
+  .tabbar button { flex:1; border:0; background:none; padding:8px 2px 9px; font-size:11.5px;
+    color:var(--soft); display:flex; flex-direction:column; align-items:center; gap:3px; min-height:54px; }
+  .tabbar button.on { color:var(--green); font-weight:700; }
+  .tabbar .ic { font-size:16px; line-height:1; }
 }
+
 </style>
 </head>
 <body>
-<div id="root"><div style="padding:40px;text-align:center;color:#67727e;font-size:14px;line-height:1.8">載入中…<br><br>如果一直停在這裡，代表 React 或 Supabase 程式庫沒載入成功，<br>通常是網路擋掉了 unpkg.com 或 jsdelivr.net。</div></div>
+<div id="root"><div class="boot">載入中…</div></div>
 
 <script>
 const {
@@ -371,6 +461,7 @@ function App() {
   const [sync, setSync] = useState("loading");
   const [page, setPage] = useState("stock");
   const [toast, setToast] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
   const timer = useRef(null);
   const flash = useCallback(m => {
     setToast(m);
@@ -421,14 +512,14 @@ function App() {
   }, [session, load]);
   if (!configured) return /*#__PURE__*/React.createElement(SetupHelp, null);
   if (session === undefined) return /*#__PURE__*/React.createElement("div", {
-    className: "empty"
+    className: "boot"
   }, "載入中…");
   if (!session) return /*#__PURE__*/React.createElement(LoginScreen, {
     flash: flash,
     toast: toast
   });
   if (!db) return /*#__PURE__*/React.createElement("div", {
-    className: "empty"
+    className: "boot"
   }, "載入中…");
   const me = db.users.find(u => u.id === session.user.id) || {
     id: session.user.id,
@@ -466,31 +557,73 @@ function App() {
     flash,
     reload: () => load(true)
   };
-  const tabs = [["stock", "庫存", "▤"], ["orders", "訂單", "▦"], ["ops", "作業", "＋"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "hd"
+  const NAV = [["stock", "庫存總覽", "▤"], ["orders", "訂單", "▦"], ["ops", "庫存作業", "＋"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
+  const TITLE = {
+    stock: "庫存總覽",
+    orders: "訂單",
+    ops: "庫存作業",
+    settings: "設定",
+    logs: "紀錄"
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "shell"
+  }, /*#__PURE__*/React.createElement("aside", {
+    className: "side" + (navOpen ? " open" : "")
   }, /*#__PURE__*/React.createElement("div", {
-    className: "t"
+    className: "brand"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mark"
+  }, "庫"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "bn"
   }, "庫存管理"), /*#__PURE__*/React.createElement("div", {
+    className: "bs"
+  }, "工廠 ＋ 門市"))), /*#__PURE__*/React.createElement("nav", {
+    className: "menu"
+  }, NAV.map(([id, label, ic]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    className: page === id ? "on" : "",
+    onClick: () => {
+      setPage(id);
+      setNavOpen(false);
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "ic"
+  }, ic), label))), /*#__PURE__*/React.createElement("div", {
+    className: "sfoot"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sme"
+  }, me.name, me.role === "admin" && /*#__PURE__*/React.createElement("span", {
+    className: "badge"
+  }, "管理者")), /*#__PURE__*/React.createElement("button", {
+    className: "signout",
+    onClick: () => sb.auth.signOut()
+  }, "登出"))), navOpen && /*#__PURE__*/React.createElement("div", {
+    className: "scrim",
+    onClick: () => setNavOpen(false)
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mainwrap"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "topbar"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "burger",
+    onClick: () => setNavOpen(true)
+  }, "☰"), /*#__PURE__*/React.createElement("div", {
+    className: "crumb"
+  }, /*#__PURE__*/React.createElement("span", null, "庫存管理"), /*#__PURE__*/React.createElement("b", null, TITLE[page])), /*#__PURE__*/React.createElement("div", {
     className: "sync"
   }, /*#__PURE__*/React.createElement("span", {
     className: "dot " + (sync === "ok" ? "ok" : sync === "err" ? "err" : "saving")
-  }), sync === "ok" ? "已同步" : sync === "saving" ? "儲存中" : sync === "err" ? "沒同步到" : "載入中"), /*#__PURE__*/React.createElement("div", {
-    className: "who"
-  }, /*#__PURE__*/React.createElement("b", null, me.name), /*#__PURE__*/React.createElement("button", {
-    className: "linkbtn",
-    onClick: () => sb.auth.signOut()
-  }, "登出"))), /*#__PURE__*/React.createElement("nav", {
+  }), sync === "ok" ? "已同步" : sync === "saving" ? "儲存中" : sync === "err" ? "沒同步到" : "載入中")), /*#__PURE__*/React.createElement("main", {
+    className: "body"
+  }, page === "stock" && /*#__PURE__*/React.createElement(StockPage, ctx), page === "orders" && /*#__PURE__*/React.createElement(OrdersPage, ctx), page === "ops" && /*#__PURE__*/React.createElement(OpsPage, ctx), page === "settings" && /*#__PURE__*/React.createElement(SettingsPage, ctx), page === "logs" && /*#__PURE__*/React.createElement(LogsPage, ctx))), /*#__PURE__*/React.createElement("nav", {
     className: "tabbar"
-  }, tabs.map(([id, label, ic]) => /*#__PURE__*/React.createElement("button", {
+  }, NAV.map(([id, label, ic]) => /*#__PURE__*/React.createElement("button", {
     key: id,
     className: page === id ? "on" : "",
     onClick: () => setPage(id)
   }, /*#__PURE__*/React.createElement("span", {
     className: "ic"
-  }, ic), label))), /*#__PURE__*/React.createElement("main", {
-    className: "body"
-  }, page === "stock" && /*#__PURE__*/React.createElement(StockPage, ctx), page === "orders" && /*#__PURE__*/React.createElement(OrdersPage, ctx), page === "ops" && /*#__PURE__*/React.createElement(OpsPage, ctx), page === "settings" && /*#__PURE__*/React.createElement(SettingsPage, ctx), page === "logs" && /*#__PURE__*/React.createElement(LogsPage, ctx)), toast && /*#__PURE__*/React.createElement("div", {
+  }, ic), label === "庫存總覽" ? "庫存" : label === "庫存作業" ? "作業" : label))), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast"
   }, toast));
 }
@@ -570,34 +703,81 @@ function StockPage({
 }) {
   const now = new Date();
   const [ym, setYm] = useState(now.getFullYear() + "-" + pad(now.getMonth() + 1));
-  const active = db.items.filter(i => i.active);
-  const [itemId, setItemId] = useState(active[0] ? active[0].id : "");
   const [view, setView] = useState("all");
-  const [onlyMoves, setOnlyMoves] = useState(false);
+  const [openNow, setOpenNow] = useState(true);
+  const [openMonth, setOpenMonth] = useState(true);
   const parts = ym.split("-");
   const y = Number(parts[0]);
   const m = Number(parts[1]);
-  const item = db.items.find(i => i.id === itemId) || active[0];
-  const rows = useMemo(() => item ? buildMonth(db, item.id, y, m) : [], [db, item, y, m]);
-  const short = useMemo(() => shortageScan(db, y, m), [db, y, m]);
   const t = today();
-  const months = [];
-  for (let k = -1; k <= 6; k++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + k, 1);
-    months.push(d.getFullYear() + "-" + pad(d.getMonth() + 1));
-  }
-  const shown = onlyMoves ? rows.filter(r => r.fShip || r.sShip || r.fMove || r.sMove || r.date === t || r.fLeft < 0 || r.sLeft < 0) : rows;
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg"
-  }, "庫存"), /*#__PURE__*/React.createElement("p", {
-    className: "lede"
-  }, "今天 ", t, "。訂單照出貨日自動扣帳，每一列是那天結束時剩下的數量。"), short.length > 0 && /*#__PURE__*/React.createElement("div", {
+  const active = db.items.filter(i => i.active);
+  const shiftMonth = delta => {
+    const d = new Date(y, m - 1 + delta, 1);
+    setYm(d.getFullYear() + "-" + pad(d.getMonth() + 1));
+  };
+
+  // 每個品項一整月的逐日資料
+  const grid = useMemo(() => active.map(it => ({
+    item: it,
+    rows: buildMonth(db, it.id, y, m)
+  })), [db, y, m]);
+  const days = grid.length ? grid[0].rows : buildMonth(db, "none", y, m);
+  const short = useMemo(() => shortageScan(db, y, m), [db, y, m]);
+  const shortCount = short.length;
+  const cellVal = (r, which) => which === "factory" ? r.fLeft : r.sLeft;
+  const cellShip = (r, which) => which === "factory" ? r.fShip : r.sShip;
+  const cellMove = (r, which) => which === "factory" ? r.fMove : r.sMove;
+  const line = (r, which) => {
+    const v = cellVal(r, which);
+    const ship = cellShip(r, which);
+    const move = cellMove(r, which);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "cl " + (which === "factory" ? "f" : "s") + (v < 0 ? " neg" : "")
+    }, ship > 0 && /*#__PURE__*/React.createElement("i", {
+      className: "out"
+    }, "−", fmt(ship)), move !== 0 && /*#__PURE__*/React.createElement("i", {
+      className: "in"
+    }, move > 0 ? "+" : "", fmt(move)), /*#__PURE__*/React.createElement("b", null, fmt(v)));
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "pager"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "pg",
+    onClick: () => shiftMonth(-1)
+  }, "‹ 上月"), /*#__PURE__*/React.createElement("div", {
+    className: "pgnow"
+  }, y, " 年 ", m, " 月"), /*#__PURE__*/React.createElement("button", {
+    className: "pg",
+    onClick: () => shiftMonth(1)
+  }, "下月 ›")), /*#__PURE__*/React.createElement("div", {
+    className: "pills"
+  }, [["all", "全部"], ["factory", "工廠"], ["store", "門市"]].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    className: view === id ? "on" : "",
+    onClick: () => setView(id)
+  }, label)), /*#__PURE__*/React.createElement("button", {
+    className: "pill-ghost",
+    onClick: reload
+  }, "重新整理")), shortCount > 0 && /*#__PURE__*/React.createElement("div", {
     className: "alertbox"
-  }, /*#__PURE__*/React.createElement("b", null, "本月有 ", short.length, " 項會不夠"), /*#__PURE__*/React.createElement("ul", null, short.map((s, i) => /*#__PURE__*/React.createElement("li", {
+  }, /*#__PURE__*/React.createElement("b", null, "本月有 ", shortCount, " 項會不夠"), /*#__PURE__*/React.createElement("ul", null, short.map((s, i) => /*#__PURE__*/React.createElement("li", {
     key: i
-  }, mdOf(s.date), "\u3000", LOC_NAME[s.loc], "\u3000", s.item.name, "\u3000", fmt(s.qty), " ", s.item.unit)))), /*#__PURE__*/React.createElement("div", {
+  }, mdOf(s.date), "\u3000", LOC_NAME[s.loc], "\u3000", s.item.name, "\u3000", fmt(s.qty), " ", s.item.unit)))), /*#__PURE__*/React.createElement("section", {
     className: "card"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "chead",
+    onClick: () => setOpenNow(!openNow)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "mark-dot"
+  }), /*#__PURE__*/React.createElement("h3", null, "目前實際庫存"), /*#__PURE__*/React.createElement("span", {
+    className: "meta"
+  }, active.length, " 品項"), /*#__PURE__*/React.createElement("span", {
+    className: "chev"
+  }, openNow ? "⌃" : "⌄")), openNow && /*#__PURE__*/React.createElement("div", {
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "plain"
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     className: "l"
   }, "品項"), /*#__PURE__*/React.createElement("th", null, "工廠"), /*#__PURE__*/React.createElement("th", null, "門市"), /*#__PURE__*/React.createElement("th", null, "總庫存"))), /*#__PURE__*/React.createElement("tbody", null, active.length === 0 && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
     className: "l faint",
@@ -606,8 +786,7 @@ function StockPage({
     const f = currentQty(db, it.id, "factory");
     const s = currentQty(db, it.id, "store");
     return /*#__PURE__*/React.createElement("tr", {
-      key: it.id,
-      className: f < 0 || s < 0 ? "bad" : ""
+      key: it.id
     }, /*#__PURE__*/React.createElement("td", {
       className: "l"
     }, it.name), /*#__PURE__*/React.createElement("td", {
@@ -617,94 +796,42 @@ function StockPage({
     }, fmt(s)), /*#__PURE__*/React.createElement("td", {
       className: "big"
     }, fmt(f + s)));
-  })))), /*#__PURE__*/React.createElement("h3", {
-    className: "sec"
-  }, "整月庫存"), /*#__PURE__*/React.createElement("div", {
-    className: "fields",
-    style: {
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "品項"), /*#__PURE__*/React.createElement("select", {
-    value: item ? item.id : "",
-    onChange: e => setItemId(e.target.value)
-  }, active.map(i => /*#__PURE__*/React.createElement("option", {
-    key: i.id,
-    value: i.id
-  }, i.name)))), /*#__PURE__*/React.createElement("div", {
-    className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "月份"), /*#__PURE__*/React.createElement("select", {
-    value: ym,
-    onChange: e => setYm(e.target.value)
-  }, months.map(o => /*#__PURE__*/React.createElement("option", {
-    key: o,
-    value: o
-  }, o.slice(0, 4), " 年 ", Number(o.slice(5)), " 月"))))), /*#__PURE__*/React.createElement("div", {
-    className: "seg",
-    style: {
-      marginBottom: 10
-    }
-  }, [["all", "全部"], ["factory", "工廠"], ["store", "門市"]].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
-    key: id,
-    className: view === id ? "on" : "",
-    onClick: () => setView(id)
-  }, label))), /*#__PURE__*/React.createElement("div", {
+  }))))), /*#__PURE__*/React.createElement("section", {
     className: "card"
-  }, !item ? /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "chead",
+    onClick: () => setOpenMonth(!openMonth)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "mark-dot"
+  }), /*#__PURE__*/React.createElement("h3", null, y, " 年 ", m, " 月\u3000每日剩餘"), /*#__PURE__*/React.createElement("span", {
+    className: "meta"
+  }, view === "all" ? "上排工廠・下排門市" : LOC_NAME[view]), /*#__PURE__*/React.createElement("span", {
+    className: "chev"
+  }, openMonth ? "⌃" : "⌄")), openMonth && (active.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
-  }, "先選一個品項。") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
-    className: "l"
-  }, "日期"), view === "all" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("th", null, "工廠"), /*#__PURE__*/React.createElement("th", null, "門市"), /*#__PURE__*/React.createElement("th", null, "合計")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("th", null, "出貨"), /*#__PURE__*/React.createElement("th", null, "剩餘")))), /*#__PURE__*/React.createElement("tbody", null, shown.map(r => {
+  }, "還沒有品項。") : /*#__PURE__*/React.createElement("div", {
+    className: "matrix"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "stick"
+  }, "品項"), days.map(r => /*#__PURE__*/React.createElement("th", {
+    key: r.date,
+    className: r.date === t ? "todaycol" : ""
+  }, mdOf(r.date), /*#__PURE__*/React.createElement("span", null, "(", weekdayOf(r.date), ")"))))), /*#__PURE__*/React.createElement("tbody", null, grid.map(({
+    item,
+    rows
+  }) => /*#__PURE__*/React.createElement("tr", {
+    key: item.id
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "stick l"
+  }, item.name), rows.map(r => {
     const bad = view !== "store" && r.fLeft < 0 || view !== "factory" && r.sLeft < 0;
-    const past = r.date < t;
-    const single = view === "factory" ? "f" : "s";
-    const ship = view === "factory" ? r.fShip : r.sShip;
-    const move = view === "factory" ? r.fMove : r.sMove;
-    const left = view === "factory" ? r.fLeft : r.sLeft;
-    return /*#__PURE__*/React.createElement("tr", {
+    return /*#__PURE__*/React.createElement("td", {
       key: r.date,
-      className: (r.date === t ? "now " : "") + (bad ? "bad" : "")
-    }, /*#__PURE__*/React.createElement("td", {
-      className: "l " + (past && !bad ? "gone" : "")
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "big"
-    }, mdOf(r.date)), /*#__PURE__*/React.createElement("span", {
-      className: "sub"
-    }, r.date === t ? "今天" : "週" + weekdayOf(r.date))), view === "all" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, r.fMove !== 0 && /*#__PURE__*/React.createElement("span", {
-      className: "mv f"
-    }, r.fMove > 0 ? "+" : "", fmt(r.fMove)), /*#__PURE__*/React.createElement("span", {
-      className: "big " + (r.fLeft < 0 ? "neg" : "f")
-    }, " ", fmt(r.fLeft)), r.fShip > 0 && /*#__PURE__*/React.createElement("span", {
-      className: "sub out"
-    }, "出 ", fmt(r.fShip))), /*#__PURE__*/React.createElement("td", null, r.sMove !== 0 && /*#__PURE__*/React.createElement("span", {
-      className: "mv s"
-    }, r.sMove > 0 ? "+" : "", fmt(r.sMove)), /*#__PURE__*/React.createElement("span", {
-      className: "big " + (r.sLeft < 0 ? "neg" : "s")
-    }, " ", fmt(r.sLeft)), r.sShip > 0 && /*#__PURE__*/React.createElement("span", {
-      className: "sub out"
-    }, "出 ", fmt(r.sShip))), /*#__PURE__*/React.createElement("td", {
-      className: "big"
-    }, fmt(r.total))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", {
-      className: ship ? "big" : "faint"
-    }, ship ? fmt(ship) : "—"), /*#__PURE__*/React.createElement("td", null, move !== 0 && /*#__PURE__*/React.createElement("span", {
-      className: "mv " + single
-    }, move > 0 ? "+" : "", fmt(move)), /*#__PURE__*/React.createElement("span", {
-      className: "big " + (left < 0 ? "neg" : single)
-    }, " ", fmt(left)))));
-  })))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 10,
-      marginTop: 12
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn ghost mini",
-    onClick: () => setOnlyMoves(!onlyMoves)
-  }, onlyMoves ? "顯示整個月" : "只看有進出的日子"), /*#__PURE__*/React.createElement("button", {
-    className: "btn ghost mini",
-    onClick: reload
-  }, "重新整理")));
+      className: (r.date === t ? "todaycol " : "") + (bad ? "badcell" : "")
+    }, (view === "all" || view === "factory") && line(r, "factory"), (view === "all" || view === "store") && line(r, "store"));
+  })))))))), /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, "格子裡是那一天結束時剩下的數量。紅色 −50 是當天出貨，綠色 +100 是當天入庫或調撥。數字變紅代表不夠。"));
 }
 
 /* ------------------------------------------------------------------ */
@@ -752,7 +879,7 @@ function OrdersPage({
     }, "已刪除，內容留在紀錄裡");
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg"
+    className: "pg2"
   }, "訂單"), /*#__PURE__*/React.createElement("p", {
     className: "lede"
   }, "輸入就代表會照這天出貨。不出貨就刪掉，刪除內容完整留在紀錄。"), /*#__PURE__*/React.createElement("button", {
@@ -1106,7 +1233,7 @@ function OpsPage({
   };
   const recent = db.entries.slice().reverse().slice(0, 10);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg"
+    className: "pg2"
   }, "庫存作業"), /*#__PURE__*/React.createElement("p", {
     className: "lede"
   }, "全部記在今天（", today(), "），送出後立刻改變庫存，不能補登過去的日期。"), /*#__PURE__*/React.createElement("div", {
@@ -1203,7 +1330,7 @@ function OpsPage({
 function SettingsPage(ctx) {
   const [tab, setTab] = useState("items");
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg"
+    className: "pg2"
   }, "設定"), /*#__PURE__*/React.createElement("div", {
     className: "tabs"
   }, /*#__PURE__*/React.createElement("button", {
@@ -1422,7 +1549,7 @@ function LogsPage({
   const entries = useMemo(() => db.entries.slice().reverse().filter(e => who === "all" || e.userId === who), [db.entries, who]);
   const logs = useMemo(() => db.logs.filter(l => who === "all" || l.userId === who), [db.logs, who]);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg"
+    className: "pg2"
   }, "紀錄"), /*#__PURE__*/React.createElement("p", {
     className: "lede"
   }, "庫存對不起來的時候從這裡查。刪掉的訂單內容完整留在操作紀錄。"), /*#__PURE__*/React.createElement("div", {
