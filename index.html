@@ -336,6 +336,10 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .extlink:hover { color:#fff; }
 .extlink .arrow { margin-left:auto; font-size:11px; opacity:.7; }
 
+/* ---------- 訂單頁工具列 ---------- */
+.toolrow { display:flex; gap:10px; align-items:center; margin-bottom:14px; }
+.toolrow .btn { min-width:0; }
+
 </style>
 </head>
 <body>
@@ -356,7 +360,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05j";
+const VERSION = "2026-09-05l";
 const MAIL_DOMAIN = "likeadream.local";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
@@ -982,7 +986,6 @@ function OrdersPage({
   flash
 }) {
   const [editing, setEditing] = useState(null);
-  const [range, setRange] = useState("future");
   const [kw, setKw] = useState("");
   const [locF, setLocF] = useState("all");
   const t = today();
@@ -991,15 +994,13 @@ function OrdersPage({
     return it ? it.name : "（已刪品項）";
   };
   const list = useMemo(() => db.orders.filter(o => {
-    if (range === "future" && o.date < t) return false;
-    if (range === "past" && o.date >= t) return false;
     if (locF !== "all" && o.loc !== locF) return false;
     if (kw) {
       const hay = (o.customer + " " + (o.extNo || "") + " " + o.no).toLowerCase();
       if (hay.indexOf(kw.toLowerCase()) === -1) return false;
     }
     return true;
-  }), [db.orders, range, kw, locF, t]);
+  }).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0), [db.orders, kw, locF]);
   const remove = async o => {
     const detail = o.lines.map(l => nameOf(l.itemId) + " " + l.qty).join("、");
     if (!window.confirm("刪除 " + o.date + "　" + o.customer + "\n" + LOC_NAME[o.loc] + "｜" + detail + "\n\n庫存表會立刻把這些數量加回去。")) return;
@@ -1018,31 +1019,21 @@ function OrdersPage({
     className: "pg2"
   }, "訂單"), /*#__PURE__*/React.createElement("p", {
     className: "lede"
-  }, "輸入就代表會照這天出貨。不出貨就刪掉，刪除內容完整留在紀錄。"), /*#__PURE__*/React.createElement("button", {
-    className: "btn wide",
+  }, "輸入就代表會照這天出貨。不出貨就刪掉，刪除內容完整留在紀錄。"), /*#__PURE__*/React.createElement("div", {
+    className: "toolrow"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn mini",
     onClick: () => setEditing({
       isNew: true
-    }),
-    style: {
-      marginBottom: 12
-    }
-  }, "新增訂單"), /*#__PURE__*/React.createElement("div", {
-    className: "seg",
-    style: {
-      marginBottom: 10
-    }
-  }, [["future", "今天以後"], ["past", "已過日期"], ["all", "全部"]].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
-    key: id,
-    className: range === id ? "on" : "",
-    onClick: () => setRange(id)
-  }, label))), /*#__PURE__*/React.createElement("div", {
+    })
+  }, "＋ 新增訂單")), /*#__PURE__*/React.createElement("div", {
     className: "fields",
     style: {
       marginBottom: 12
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "搜尋客戶或單號"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "搜尋客人姓名"), /*#__PURE__*/React.createElement("input", {
     value: kw,
     onChange: e => setKw(e.target.value),
     placeholder: "王小姐"
@@ -1109,7 +1100,6 @@ function OrderSheet({
   close
 }) {
   const active = db.items.filter(i => i.active);
-  const [extNo, setExtNo] = useState(order ? order.extNo || "" : "");
   const [customer, setCustomer] = useState(order ? order.customer : "");
   const [date, setDate] = useState(order ? order.date : today());
   const [loc, setLoc] = useState(order ? order.loc : "store");
@@ -1127,7 +1117,7 @@ function OrderSheet({
   };
   const setLine = (i, patch) => setLines(lines.map((l, k) => k === i ? Object.assign({}, l, patch) : l));
   const submit = async () => {
-    if (!customer.trim()) return flash("請填客戶名稱");
+    if (!customer.trim()) return flash("請填客人姓名");
     const clean = lines.map(l => ({
       itemId: l.itemId,
       qty: Number(l.qty)
@@ -1140,7 +1130,6 @@ function OrderSheet({
         const before = order.customer + "　" + order.date + "　" + LOC_NAME[order.loc] + "　" + order.lines.map(l => nameOf(l.itemId) + " " + l.qty).join("、");
         const after = customer + "　" + date + "　" + LOC_NAME[loc] + "　" + detail;
         let r = await sb.from("orders").update({
-          ext_no: extNo || null,
           customer,
           ship_date: date,
           loc,
@@ -1167,7 +1156,6 @@ function OrderSheet({
         });
       } else {
         const ins = await sb.from("orders").insert({
-          ext_no: extNo || null,
           customer,
           ship_date: date,
           loc,
@@ -1202,19 +1190,13 @@ function OrderSheet({
     className: "fields"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "客戶名稱"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "客人姓名"), /*#__PURE__*/React.createElement("input", {
     value: customer,
     onChange: e => setCustomer(e.target.value),
     placeholder: "王小姐"
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "原訂單編號"), /*#__PURE__*/React.createElement("input", {
-    value: extNo,
-    onChange: e => setExtNo(e.target.value),
-    placeholder: "原系統單號，可留白"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "出貨日期"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "寄出日"), /*#__PURE__*/React.createElement("input", {
     type: "date",
     value: date,
     min: today(),
