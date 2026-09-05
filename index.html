@@ -271,11 +271,62 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .linky.center { display:block; margin:14px auto 0; }
 
 
-/* ---------- 桌機：表單不蓋住側欄 ---------- */
+
+.fld input.pin { font-size:22px; letter-spacing:.4em; text-align:center; padding:12px; }
+
+/* ---------- 桌機：收緊版面，表單不要撐滿整個螢幕 ---------- */
 @media (min-width:861px) {
-  .sheet { left:230px; }
-  .sheet header, .sheet .inner, .sheet footer { max-width:820px; }
-  .sheet .inner { width:100%; }
+  .body { max-width:1400px; padding:18px 22px 50px; }
+  .card { max-width:880px; }
+  .card.full { max-width:none; }
+  .alertbox { max-width:880px; }
+  .pad { padding:14px 16px 16px; }
+  .fld { flex:0 1 220px; }
+  .fld input, .fld select { min-height:38px; padding:8px 10px; font-size:14px; }
+  .fld label { font-size:11px; }
+  .btn { padding:9px 16px; min-height:38px; font-size:13.5px; }
+  .btn.mini { padding:5px 11px; min-height:31px; font-size:12.5px; }
+  .pad .btn.wide, .body > .btn.wide { width:auto; min-width:180px; }
+  .seg { max-width:520px; }
+  .seg button { min-height:38px; font-size:13px; padding:8px 12px; }
+  .body > .seg { max-width:520px; }
+  td, th { padding:8px 10px; }
+  .chead { padding:12px 16px; }
+  .chead h3 { font-size:13.5px; }
+  .ord { padding:12px 16px; }
+  .note { max-width:880px; }
+}
+
+/* ---------- 矩陣左欄的地點標註 ---------- */
+.sinner { display:flex; align-items:center; gap:8px; }
+.sinner .iname { flex:1; min-width:0; }
+.legend { display:flex; flex-direction:column; flex:none; text-align:right; }
+.legend .cl { font-size:10.5px; }
+.legend .cl b { font-weight:600; }
+@media (min-width:861px) {
+  .matrix .stick { min-width:178px; max-width:178px; }
+}
+@media (max-width:860px) {
+  .matrix .stick { min-width:124px; max-width:124px; }
+  .legend .cl { font-size:9.5px; }
+}
+
+
+/* ---------- 桌機：表單縮成一張窄面板，側欄留著 ---------- */
+@media (min-width:861px) {
+  .sheet { left:230px; display:block; overflow:auto;
+    background:rgba(28,40,32,.24); padding:30px 0 40px 30px; }
+  .sheet header, .sheet .inner, .sheet footer {
+    width:560px; max-width:100%; background:var(--card); }
+  .sheet header { border:1px solid var(--rule); border-bottom:1px solid var(--hair);
+    border-radius:12px 12px 0 0; }
+  .sheet .inner { border-left:1px solid var(--rule); border-right:1px solid var(--rule);
+    overflow:visible; padding:16px; }
+  .sheet footer { border:1px solid var(--rule); border-top:1px solid var(--hair);
+    border-radius:0 0 12px 12px; padding:12px 16px; }
+  .sheet footer .btn { flex:0 0 auto; min-width:120px; }
+  .sheet footer { justify-content:flex-end; }
+  .sheet .row input { width:84px; }
 }
 
 </style>
@@ -298,8 +349,13 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05d";
+const VERSION = "2026-09-05h";
 const MAIL_DOMAIN = "likeadream.local";
+
+/* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
+   使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
+const PIN_TAIL = "-ld24";
+const padPin = p => p + PIN_TAIL;
 const SUPABASE_URL = "https://ogjgxzzymdjyxcdnzuee.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
 const configured = SUPABASE_URL.indexOf("你的") === -1 && SUPABASE_ANON_KEY.indexOf("你的") === -1;
@@ -698,14 +754,16 @@ function LoginScreen({
   const doLogin = async email => {
     if (!pw) return flash("請輸入密碼");
     setBusy(true);
-    const {
-      error
-    } = await sb.auth.signInWithPassword({
+    let r = await sb.auth.signInWithPassword({
+      email,
+      password: padPin(pw)
+    });
+    if (r.error) r = await sb.auth.signInWithPassword({
       email,
       password: pw
     });
     setBusy(false);
-    if (error) flash("密碼不對");
+    if (r.error) flash("密碼不對");
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "gate"
@@ -722,10 +780,13 @@ function LoginScreen({
   }, "換人")), /*#__PURE__*/React.createElement("div", {
     className: "fld full"
   }, /*#__PURE__*/React.createElement("label", null, "密碼"), /*#__PURE__*/React.createElement("input", {
+    className: "pin",
     type: "password",
     value: pw,
     autoFocus: true,
     autoComplete: "current-password",
+    maxLength: 20,
+    placeholder: "••••",
     onChange: e => setPw(e.target.value),
     onKeyDown: e => e.key === "Enter" && doLogin(picked.email)
   })), /*#__PURE__*/React.createElement("button", {
@@ -855,7 +916,7 @@ function StockPage({
   }, /*#__PURE__*/React.createElement("b", null, "本月有 ", shortCount, " 項會不夠"), /*#__PURE__*/React.createElement("ul", null, short.map((s, i) => /*#__PURE__*/React.createElement("li", {
     key: i
   }, mdOf(s.date), "\u3000", LOC_NAME[s.loc], "\u3000", s.item.name, "\u3000", fmt(s.qty), " ", s.item.unit)))), /*#__PURE__*/React.createElement("section", {
-    className: "card"
+    className: "card full"
   }, /*#__PURE__*/React.createElement("header", {
     className: "chead",
     onClick: () => setOpenMonth(!openMonth)
@@ -881,7 +942,17 @@ function StockPage({
     key: item.id
   }, /*#__PURE__*/React.createElement("th", {
     className: "stick l"
-  }, item.name), rows.map(r => {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sinner"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "iname"
+  }, item.name), view === "all" && /*#__PURE__*/React.createElement("span", {
+    className: "legend"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "cl f"
+  }, /*#__PURE__*/React.createElement("b", null, "工廠")), /*#__PURE__*/React.createElement("span", {
+    className: "cl s"
+  }, /*#__PURE__*/React.createElement("b", null, "門市"))))), rows.map(r => {
     const bad = view !== "store" && r.fLeft < 0 || view !== "factory" && r.sLeft < 0;
     return /*#__PURE__*/React.createElement("td", {
       key: r.date,
@@ -1500,11 +1571,11 @@ function UsersPanel({
   const [busy, setBusy] = useState(false);
   const isAdmin = me.role === "admin";
   const changePw = async () => {
-    if (pw1.length < 6) return flash("新密碼至少 6 個字");
+    if (pw1.length < 4) return flash("新密碼至少 4 碼");
     const {
       error
     } = await sb.auth.updateUser({
-      password: pw1
+      password: padPin(pw1)
     });
     if (error) return flash("改不了：" + error.message);
     setPw1("");
@@ -1513,7 +1584,7 @@ function UsersPanel({
   const addPerson = async () => {
     if (!nName.trim()) return flash("請填姓名");
     if (!/^[a-zA-Z0-9._-]+$/.test(nUser.trim())) return flash("帳號只能用英文、數字、點和底線");
-    if (nPw.length < 6) return flash("密碼至少 6 個字");
+    if (nPw.length < 4) return flash("密碼至少 4 碼");
     const email = nUser.trim().toLowerCase() + "@" + MAIL_DOMAIN;
     setBusy(true);
     try {
@@ -1529,7 +1600,7 @@ function UsersPanel({
         error
       } = await tmp.auth.signUp({
         email,
-        password: nPw,
+        password: padPin(nPw),
         options: {
           data: {
             name: nName.trim()
@@ -1614,6 +1685,7 @@ function UsersPanel({
     className: "fld"
   }, /*#__PURE__*/React.createElement("label", null, "姓名，紀錄上顯示這個"), /*#__PURE__*/React.createElement("input", {
     value: nName,
+    autoComplete: "off",
     onChange: e => setNName(e.target.value),
     placeholder: "陳阿明"
   })), /*#__PURE__*/React.createElement("div", {
@@ -1621,13 +1693,16 @@ function UsersPanel({
   }, /*#__PURE__*/React.createElement("label", null, "登入帳號，英文"), /*#__PURE__*/React.createElement("input", {
     value: nUser,
     autoCapitalize: "none",
+    autoComplete: "off",
+    name: "newuser",
     onChange: e => setNUser(e.target.value),
     placeholder: "ming"
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "密碼，至少 6 個字"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
     type: "password",
     value: nPw,
+    autoComplete: "new-password",
     onChange: e => setNPw(e.target.value)
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld full"
@@ -1661,9 +1736,10 @@ function UsersPanel({
     className: "pad"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "新密碼，至少 6 個字"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "新密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
     type: "password",
     value: pw1,
+    autoComplete: "new-password",
     onChange: e => setPw1(e.target.value)
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn ghost wide",
