@@ -329,6 +329,13 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
   .sheet .row input { width:84px; }
 }
 
+/* ---------- 側欄的外部連結 ---------- */
+.extlink { display:flex; align-items:center; gap:11px; padding:11px 13px;
+  margin-top:10px; border-top:1px solid rgba(255,255,255,.1); padding-top:16px;
+  color:#a9bdae; font-size:14px; text-decoration:none; min-height:44px; }
+.extlink:hover { color:#fff; }
+.extlink .arrow { margin-left:auto; font-size:11px; opacity:.7; }
+
 </style>
 </head>
 <body>
@@ -349,7 +356,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05h";
+const VERSION = "2026-09-05j";
 const MAIL_DOMAIN = "likeadream.local";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
