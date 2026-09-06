@@ -364,6 +364,15 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
   font-size:11.5px; color:var(--faint); text-align:center; }
 .panel .ver { display:none; }
 
+/* ---------- 訂單表格 ---------- */
+.orders th { background:#faf8f2; font-size:12px; padding:11px 12px; }
+.orders td { padding:12px; vertical-align:middle; border-bottom:1px solid var(--hair); }
+.orders tbody tr:hover td { background:#fbfaf6; }
+.orders .odate { font-weight:600; font-size:14px; }
+.orders .ocust { font-weight:600; }
+.orders .oacts { white-space:nowrap; text-align:right; }
+.orders td div + div { margin-top:3px; }
+
 </style>
 </head>
 <body>
@@ -384,7 +393,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05r";
+const VERSION = "2026-09-05s";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1171,39 +1180,55 @@ function OrdersPage({
     key: l.id,
     value: l.id
   }, l.name))))), /*#__PURE__*/React.createElement("div", {
-    className: "card"
+    className: "card full"
   }, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, "這個條件下沒有訂單。") : /*#__PURE__*/React.createElement("div", {
-    className: "olist"
-  }, list.map(o => /*#__PURE__*/React.createElement("div", {
-    className: "ord",
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "orders"
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "寄出日"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "客戶"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "品項"), /*#__PURE__*/React.createElement("th", null, "數量"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "出貨地點"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, list.map(o => /*#__PURE__*/React.createElement("tr", {
     key: o.id
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "top"
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "date"
-  }, mdOf(o.date)), /*#__PURE__*/React.createElement("span", {
-    className: "wd"
-  }, "週", weekdayOf(o.date)), /*#__PURE__*/React.createElement("span", {
-    className: "tag " + (o.loc === "factory" ? "f" : "s")
-  }, LOC_NAME[o.loc]), /*#__PURE__*/React.createElement("span", {
-    className: "cust"
-  }, o.customer)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "lines"
+    className: "odate"
+  }, o.date), /*#__PURE__*/React.createElement("span", {
+    className: "sub"
+  }, "週", weekdayOf(o.date))), /*#__PURE__*/React.createElement("td", {
+    className: "l ocust"
+  }, o.customer), /*#__PURE__*/React.createElement("td", {
+    className: "l"
   }, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
     key: i
-  }, nameOf(l.itemId), "\u3000", /*#__PURE__*/React.createElement("b", null, fmt(l.qty))))), /*#__PURE__*/React.createElement("div", {
-    className: "no"
-  }, o.extNo ? o.extNo + "　" + o.no : o.no, o.editedBy ? "　" + o.editedBy + " 於 " + o.editedAt + " 修改" : o.createdBy ? "　" + o.createdBy + " 建立" : "")), /*#__PURE__*/React.createElement("div", {
-    className: "acts"
+  }, nameOf(l.itemId)))), /*#__PURE__*/React.createElement("td", null, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "big"
+  }, fmt(l.qty)))), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tag " + (o.loc === "factory" ? "f" : "s")
+  }, LOC_NAME[o.loc])), /*#__PURE__*/React.createElement("td", {
+    className: "l faint"
+  }, o.editedBy ? o.editedBy + "（改）" : o.createdBy || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "oacts"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
     onClick: () => setEditing(o)
-  }, "修改"), /*#__PURE__*/React.createElement("button", {
+  }, "修改"), " ", /*#__PURE__*/React.createElement("button", {
     className: "btn danger mini",
     onClick: () => remove(o)
-  }, "刪除")))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
+  }, "刪除")))))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
     db: db,
     me: me,
     run: run,
