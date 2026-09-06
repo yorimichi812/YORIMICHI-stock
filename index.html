@@ -360,16 +360,12 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05m";
-const MAIL_DOMAIN = "likeadream.local";
+const VERSION = "2026-09-05n";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
 const PIN_TAIL = "-ld24";
 const padPin = p => p + PIN_TAIL;
-
-/* 登入只靠點名字，帳號由系統自己產生，沒人需要記它 */
-const autoUser = () => "u" + Math.random().toString(36).slice(2, 10);
 const SUPABASE_URL = "https://ogjgxzzymdjyxcdnzuee.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
 const configured = SUPABASE_URL.indexOf("你的") === -1 && SUPABASE_ANON_KEY.indexOf("你的") === -1;
@@ -1575,38 +1571,16 @@ function UsersPanel({
   const addPerson = async () => {
     if (!nName.trim()) return flash("請填姓名");
     if (nPw.length < 4) return flash("密碼至少 4 碼");
-    const uname = autoUser();
-    const email = uname + "@" + MAIL_DOMAIN;
     setBusy(true);
     try {
-      // 用獨立的連線註冊，才不會把自己目前的登入狀態換掉
-      const tmp = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false
-        }
-      });
       const {
-        data,
         error
-      } = await tmp.auth.signUp({
-        email,
-        password: padPin(nPw),
-        options: {
-          data: {
-            name: nName.trim()
-          }
-        }
+      } = await sb.rpc("create_staff", {
+        p_name: nName.trim(),
+        p_pin: nPw,
+        p_role: nRole
       });
       if (error) throw error;
-      if (!data.user) throw new Error("建立失敗，請確認 Supabase 的 Confirm email 已關閉");
-      const up = await sb.from("app_users").update({
-        name: nName.trim(),
-        username: uname,
-        role: nRole,
-        active: true
-      }).eq("id", data.user.id);
-      if (up.error) throw up.error;
       await logIt("新增人員", nName.trim() + "　" + (nRole === "admin" ? "管理者" : "一般"));
       setNName("");
       setNPw("");
@@ -1614,11 +1588,24 @@ function UsersPanel({
       flash("已建立 " + nName.trim() + " 的帳號");
     } catch (e) {
       console.error(e);
-      const msg = e && e.message || "";
-      if (msg.indexOf("already registered") !== -1 || msg.indexOf("already been registered") !== -1) flash("這個帳號已經有人用了");else if (msg.indexOf("Signups not allowed") !== -1) flash("Supabase 的註冊功能被關掉了，到 Authentication 打開 Allow new users to sign up");else flash("建立失敗：" + msg);
+      flash("建立失敗：" + (e && e.message || ""));
     } finally {
       setBusy(false);
     }
+  };
+  const resetPin = async u => {
+    const np = window.prompt("幫 " + u.name + " 設定新密碼，至少 4 碼");
+    if (!np) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("set_staff_pin", {
+        p_user: u.id,
+        p_pin: np
+      });
+      if (error) throw error;
+      await logIt("重設密碼", u.name);
+    }, "密碼已重設");
   };
   const rename = async u => {
     const nv = window.prompt("這個人在紀錄上顯示的名字", u.name);
@@ -1704,7 +1691,7 @@ function UsersPanel({
     onClick: addPerson
   }, busy ? "建立中…" : "建立帳號"), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "建好之後把網址和這組密碼給他，他在登入頁點自己的名字、輸入密碼就能進來。 忘記密碼沒辦法在這裡重設，要到 Supabase 後台的 Authentication 改。"))), /*#__PURE__*/React.createElement("section", {
+  }, "建好之後把網址和這組密碼給他，他在登入頁點自己的名字、輸入密碼就能進來。 忘記密碼在下面那張表按「重設密碼」就好。"))), /*#__PURE__*/React.createElement("section", {
     className: "card"
   }, /*#__PURE__*/React.createElement("header", {
     className: "chead",
@@ -1761,6 +1748,9 @@ function UsersPanel({
     className: "btn ghost mini",
     onClick: () => rename(u)
   }, "改名"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => resetPin(u)
+  }, "重設密碼"), " ", /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
     onClick: () => setRole(u)
   }, u.role === "admin" ? "降為一般" : "設為管理者"), " ", /*#__PURE__*/React.createElement("button", {
