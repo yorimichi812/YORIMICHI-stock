@@ -511,7 +511,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-06d";
+const VERSION = "2026-09-06e";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -539,8 +539,8 @@ const LOC_NAME = {
 };
 const ENTRY_LABEL = {
   in: "入庫",
-  transfer_out: "調撥出",
-  transfer_in: "調撥入",
+  transfer_out: "撥出",
+  transfer_in: "調入",
   adjust: "盤點調整"
 };
 const pad = n => String(n).padStart(2, "0");
@@ -577,11 +577,11 @@ function buildMonth(db, itemId, year, month) {
   const inn = {
     factory: {},
     store: {}
-  }; // 入庫、調撥進
+  }; // 入庫、撥調進
   const out = {
     factory: {},
     store: {}
-  }; // 出貨、調撥出、盤點短少
+  }; // 出貨、撥調出、盤點短少
   let f = 0;
   let s = 0;
   for (const e of db.entries) {
@@ -827,11 +827,11 @@ function App() {
     flash,
     reload: () => load(true)
   };
-  const NAV = [["stock", "庫存總覽", "▤"], ["orders", "訂單", "▦"], ["ops", "調撥", "⇄"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
+  const NAV = [["stock", "庫存總覽", "▤"], ["orders", "訂單", "▦"], ["ops", "撥調", "⇄"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
   const TITLE = {
     stock: "庫存總覽",
     orders: "訂單",
-    ops: "調撥",
+    ops: "撥調",
     settings: "設定",
     logs: "紀錄"
   };
@@ -1353,7 +1353,7 @@ function StockPage({
     onClick: () => setPending(null)
   }, "取消"))), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "點一下「進出」格子就能輸入。正數會問你是入庫還是盤點校正，負數直接記成盤點校正。 調撥要到左邊的調撥頁，因為它同時動工廠和門市兩邊。"));
+  }, "點一下「進出」格子就能輸入。正數會問你是入庫還是盤點校正，負數直接記成盤點校正。 撥調要到左邊的撥調頁，因為它同時動工廠和門市兩邊。"));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1707,8 +1707,8 @@ function OpsPage({
         transfer_id: tid
       })]);
       if (r.error) throw r.error;
-      await logIt("調撥", date + "　" + nameOf(item) + "　" + LOC_NAME[loc] + " → " + LOC_NAME[to] + "　" + n + (note ? "　" + note : ""));
-    }, "調撥完成，總庫存不變");
+      await logIt("撥調", date + "　" + nameOf(item) + "　" + LOC_NAME[loc] + " → " + LOC_NAME[to] + "　" + n + (note ? "　" + note : ""));
+    }, "撥調完成，總庫存不變");
     if (ok) {
       setQty("");
       setNote("");
@@ -1717,7 +1717,7 @@ function OpsPage({
   const recent = db.entries.slice().reverse().slice(0, 12);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "lede"
-  }, "調撥要在這裡做，因為它同時動工廠和門市兩邊。入庫和盤點校正直接在庫存總覽的格子輸入就好。"), /*#__PURE__*/React.createElement("div", {
+  }, "撥調要在這裡做，因為它同時動工廠和門市兩邊。入庫和盤點校正直接在庫存總覽的格子輸入就好。"), /*#__PURE__*/React.createElement("div", {
     className: "card pad"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fields"
@@ -1745,7 +1745,7 @@ function OpsPage({
     value: i.id
   }, i.name)))), /*#__PURE__*/React.createElement("div", {
     className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "調撥數量"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "撥調數量"), /*#__PURE__*/React.createElement("input", {
     type: "number",
     inputMode: "numeric",
     value: qty,
@@ -1758,15 +1758,15 @@ function OpsPage({
     placeholder: "可留白"
   }))), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, LOC_NAME[loc], "在 ", date, " 是 ", fmt(before), n ? "　→　調撥後 " + fmt(before - n) : "", "。總庫存不變。"), n > before && /*#__PURE__*/React.createElement("p", {
+  }, LOC_NAME[loc], "在 ", date, " 是 ", fmt(before), n ? "　→　撥調後 " + fmt(before - n) : "", "。總庫存不變。"), n > before && /*#__PURE__*/React.createElement("p", {
     className: "note warn"
-  }, "調撥量超過", LOC_NAME[loc], "當天的庫存，送出後會變負數。"), /*#__PURE__*/React.createElement("button", {
+  }, "撥調量超過", LOC_NAME[loc], "當天的庫存，送出後會變負數。"), /*#__PURE__*/React.createElement("button", {
     className: "btn wide",
     style: {
       marginTop: 14
     },
     onClick: doTransfer
-  }, "調撥到", LOC_NAME[to])), /*#__PURE__*/React.createElement("h3", {
+  }, "撥調到", LOC_NAME[to])), /*#__PURE__*/React.createElement("h3", {
     className: "sec"
   }, "最近的異動"), /*#__PURE__*/React.createElement("div", {
     className: "card"
