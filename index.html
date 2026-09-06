@@ -418,6 +418,28 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .orders th:nth-child(6), .orders td:nth-child(6) { width:16%; }
 .orders th:nth-child(7), .orders td:nth-child(7) { width:19%; }
 
+/* ---------- 矩陣：進／出／餘三行 ---------- */
+.matrix td { padding:5px 6px; }
+.cl { font-size:12px; line-height:1.55; white-space:nowrap; text-align:center; }
+.cl + .cl { border-top:0; margin-top:0; padding-top:0; }
+.cl.in { color:#7f8b81; }
+.cl.out { color:#a98d86; }
+.cl.in.f, .cl.in.s { color:var(--factory); }
+.cl.out.f, .cl.out.s { color:var(--alert); }
+.cl.bal { border-top:1px solid var(--hair); margin-top:2px; padding-top:2px; font-size:13px; }
+.cl.bal.f b { color:var(--factory); }
+.cl.bal.s b { color:var(--store); }
+.cl.bal.neg b { color:var(--alert); }
+.legend .cl { text-align:right; font-size:10.5px; color:var(--faint); }
+.legend .cl.bal { font-weight:600; color:var(--soft); }
+.legend .cl.in, .legend .cl.out { color:var(--faint); }
+.matrix .stick { min-width:150px; max-width:150px; }
+@media (max-width:860px) {
+  .matrix .stick { min-width:112px; max-width:112px; }
+  .legend .cl { font-size:9.5px; }
+  .cl { font-size:11px; }
+}
+
 </style>
 </head>
 <body>
@@ -438,7 +460,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05v";
+const VERSION = "2026-09-05y";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -472,6 +494,12 @@ const ENTRY_LABEL = {
 };
 const pad = n => String(n).padStart(2, "0");
 const today = () => new Date().toLocaleDateString("sv-SE");
+const plusDays = n => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString("sv-SE");
+};
+const ALERT_DAYS = 14;
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
 const fmt = n => n === 0 ? "0" : n.toLocaleString("en-US");
 const mdOf = d => Number(d.slice(5, 7)) + "/" + Number(d.slice(8));
@@ -495,21 +523,23 @@ const currentQty = (db, itemId, loc) => balanceAt(db, itemId, loc, today());
 function buildMonth(db, itemId, year, month) {
   const total = daysInMonth(year, month);
   const first = year + "-" + pad(month) + "-01";
-  const shipped = {
+  const inn = {
     factory: {},
     store: {}
-  };
-  const moved = {
+  }; // 入庫、調撥進
+  const out = {
     factory: {},
     store: {}
-  };
+  }; // 出貨、調撥出、盤點短少
   let f = 0;
   let s = 0;
   for (const e of db.entries) {
     if (e.itemId !== itemId) continue;
     if (e.date < first) {
       if (e.loc === "factory") f += e.qty;else s += e.qty;
-    } else if (moved[e.loc]) moved[e.loc][e.date] = (moved[e.loc][e.date] || 0) + e.qty;
+    } else if (inn[e.loc]) {
+      if (e.qty > 0) inn[e.loc][e.date] = (inn[e.loc][e.date] || 0) + e.qty;else out[e.loc][e.date] = (out[e.loc][e.date] || 0) - e.qty;
+    }
   }
   for (const o of db.orders) {
     let q = 0;
@@ -517,23 +547,25 @@ function buildMonth(db, itemId, year, month) {
     if (!q) continue;
     if (o.date < first) {
       if (o.loc === "factory") f -= q;else s -= q;
-    } else if (shipped[o.loc]) shipped[o.loc][o.date] = (shipped[o.loc][o.date] || 0) + q;
+    } else if (out[o.loc]) {
+      out[o.loc][o.date] = (out[o.loc][o.date] || 0) + q;
+    }
   }
   const rows = [];
   for (let d = 1; d <= total; d++) {
     const date = year + "-" + pad(month) + "-" + pad(d);
-    const fMove = moved.factory[date] || 0;
-    const sMove = moved.store[date] || 0;
-    const fShip = shipped.factory[date] || 0;
-    const sShip = shipped.store[date] || 0;
-    f = f + fMove - fShip;
-    s = s + sMove - sShip;
+    const fIn = inn.factory[date] || 0;
+    const sIn = inn.store[date] || 0;
+    const fOut = out.factory[date] || 0;
+    const sOut = out.store[date] || 0;
+    f = f + fIn - fOut;
+    s = s + sIn - sOut;
     rows.push({
       date,
-      fMove,
-      sMove,
-      fShip,
-      sShip,
+      fIn,
+      sIn,
+      fOut,
+      sOut,
       fLeft: f,
       sLeft: s,
       total: f + s
@@ -542,10 +574,12 @@ function buildMonth(db, itemId, year, month) {
   return rows;
 }
 function shortageScan(db, y, m) {
+  const from = today();
+  const to = plusDays(ALERT_DAYS);
   const out = [];
   for (const it of db.items) {
     if (!it.active) continue;
-    const rows = buildMonth(db, it.id, y, m);
+    const rows = buildMonth(db, it.id, y, m).filter(r => r.date >= from && r.date <= to);
     for (const loc of ["factory", "store"]) {
       const key = loc === "factory" ? "fLeft" : "sLeft";
       const hit = rows.find(r => r[key] < 0);
@@ -557,6 +591,7 @@ function shortageScan(db, y, m) {
       });
     }
   }
+  out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
   return out;
 }
 
@@ -1065,21 +1100,26 @@ function StockPage({
   const days = grid.length ? grid[0].rows : buildMonth(db, "none", y, m);
   const short = useMemo(() => shortageScan(db, y, m), [db, y, m]);
   const shortCount = short.length;
-  const cellVal = (r, which) => which === "factory" ? r.fLeft : r.sLeft;
-  const cellShip = (r, which) => which === "factory" ? r.fShip : r.sShip;
-  const cellMove = (r, which) => which === "factory" ? r.fMove : r.sMove;
   const line = (r, which) => {
-    const v = cellVal(r, which);
-    const ship = cellShip(r, which);
-    const move = cellMove(r, which);
-    return /*#__PURE__*/React.createElement("div", {
-      className: "cl " + (which === "factory" ? "f" : "s") + (v < 0 ? " neg" : "")
-    }, ship > 0 && /*#__PURE__*/React.createElement("i", {
-      className: "out"
-    }, "−", fmt(ship)), move !== 0 && /*#__PURE__*/React.createElement("i", {
-      className: "in"
-    }, move > 0 ? "+" : "", fmt(move)), /*#__PURE__*/React.createElement("b", null, fmt(v)));
+    const v = which === "factory" ? r.fLeft : r.sLeft;
+    const i = which === "factory" ? r.fIn : r.sIn;
+    const o = which === "factory" ? r.fOut : r.sOut;
+    const c = which === "factory" ? "f" : "s";
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "cl in " + c
+    }, i ? "+" + fmt(i) : "·"), /*#__PURE__*/React.createElement("div", {
+      className: "cl out " + c
+    }, o ? "−" + fmt(o) : "·"), /*#__PURE__*/React.createElement("div", {
+      className: "cl bal " + c + (v < 0 ? " neg" : "")
+    }, /*#__PURE__*/React.createElement("b", null, fmt(v))));
   };
+  const legend = which => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "cl in " + (which === "factory" ? "f" : "s")
+  }, LOC_NAME[which], " 進"), /*#__PURE__*/React.createElement("div", {
+    className: "cl out " + (which === "factory" ? "f" : "s")
+  }, LOC_NAME[which], " 出"), /*#__PURE__*/React.createElement("div", {
+    className: "cl bal " + (which === "factory" ? "f" : "s")
+  }, LOC_NAME[which], " 餘"));
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "pager"
   }, /*#__PURE__*/React.createElement("button", {
@@ -1110,9 +1150,9 @@ function StockPage({
     onClick: () => setOpenMonth(!openMonth)
   }, /*#__PURE__*/React.createElement("span", {
     className: "mark-dot"
-  }), /*#__PURE__*/React.createElement("h3", null, y, " 年 ", m, " 月\u3000每日剩餘"), /*#__PURE__*/React.createElement("span", {
+  }), /*#__PURE__*/React.createElement("h3", null, y, " 年 ", m, " 月\u3000每日進出與剩餘"), /*#__PURE__*/React.createElement("span", {
     className: "meta"
-  }, view === "all" ? "上排工廠・下排門市" : LOC_NAME[view]), /*#__PURE__*/React.createElement("span", {
+  }, view === "all" ? "工廠與門市各三行：進、出、餘" : LOC_NAME[view] + "　進、出、餘"), /*#__PURE__*/React.createElement("span", {
     className: "chev"
   }, openMonth ? "⌃" : "⌄")), openMonth && (active.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
@@ -1134,13 +1174,9 @@ function StockPage({
     className: "sinner"
   }, /*#__PURE__*/React.createElement("span", {
     className: "iname"
-  }, item.name), view === "all" && /*#__PURE__*/React.createElement("span", {
+  }, item.name), /*#__PURE__*/React.createElement("span", {
     className: "legend"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "cl f"
-  }, /*#__PURE__*/React.createElement("b", null, "工廠")), /*#__PURE__*/React.createElement("span", {
-    className: "cl s"
-  }, /*#__PURE__*/React.createElement("b", null, "門市"))))), rows.map(r => {
+  }, (view === "all" || view === "factory") && legend("factory"), (view === "all" || view === "store") && legend("store")))), rows.map(r => {
     const bad = view !== "store" && r.fLeft < 0 || view !== "factory" && r.sLeft < 0;
     return /*#__PURE__*/React.createElement("td", {
       key: r.date,
@@ -1148,7 +1184,7 @@ function StockPage({
     }, (view === "all" || view === "factory") && line(r, "factory"), (view === "all" || view === "store") && line(r, "store"));
   })))))))), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "格子裡是那一天結束時剩下的數量。紅色 −50 是當天出貨，綠色 +100 是當天入庫或調撥。數字變紅代表不夠。"));
+  }, "進是當天入庫或調撥進來的，出是當天出貨、調撥出去或盤點短少的，餘是那天結束時剩下的。 沒有進出的日子顯示一個點。餘變紅代表不夠。"));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1659,24 +1695,33 @@ function ItemsPanel({
   logIt,
   flash
 }) {
-  const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("包");
   const add = async () => {
-    if (!sku.trim() || !name.trim()) return flash("請填編號和名稱");
+    if (!name.trim()) return flash("請填品項名稱");
+    if (db.items.some(i => i.name === name.trim())) return flash("這個名稱已經有了");
+    const sku = "I" + Date.now().toString(36).toUpperCase();
     const ok = await run(async () => {
       const r = await sb.from("items").insert({
-        sku: sku.trim(),
+        sku,
         name: name.trim(),
         unit: unit.trim() || "包"
       });
       if (r.error) throw r.error;
-      await logIt("新增品項", sku.trim() + "　" + name.trim() + "　" + (unit.trim() || "包"));
+      await logIt("新增品項", name.trim() + "　" + (unit.trim() || "包"));
     }, "已新增");
-    if (ok) {
-      setSku("");
-      setName("");
-    }
+    if (ok) setName("");
+  };
+  const rename = async it => {
+    const nv = window.prompt("品項名稱", it.name);
+    if (!nv || !nv.trim() || nv.trim() === it.name) return;
+    await run(async () => {
+      const r = await sb.from("items").update({
+        name: nv.trim()
+      }).eq("id", it.id);
+      if (r.error) throw r.error;
+      await logIt("修改品項名稱", it.name + " → " + nv.trim());
+    }, "已改名");
   };
   const toggle = async it => {
     await run(async () => {
@@ -1684,12 +1729,24 @@ function ItemsPanel({
         active: !it.active
       }).eq("id", it.id);
       if (r.error) throw r.error;
-      await logIt(it.active ? "停用品項" : "啟用品項", it.sku + "　" + it.name);
+      await logIt(it.active ? "停用品項" : "啟用品項", it.name);
     });
+  };
+  const removeItem = async it => {
+    if (!window.confirm("刪除 " + it.name + "？\n\n只有從來沒被用過的品項可以刪除。\n用過的請改成停用。")) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("delete_item", {
+        p_id: it.id
+      });
+      if (error) throw error;
+      await logIt("刪除品項", it.name);
+    }, "已刪除 " + it.name);
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "lede"
-  }, "單位一律用包。不用的品項改成停用，不要刪掉，歷史紀錄還要靠它。"), /*#__PURE__*/React.createElement("div", {
+  }, "單位一律用包。已經用過的品項不能刪除，改成停用就好，歷史紀錄還要靠它。"), /*#__PURE__*/React.createElement("div", {
     className: "card pad",
     style: {
       marginBottom: 12
@@ -1698,21 +1755,15 @@ function ItemsPanel({
     className: "fields"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "編號"), /*#__PURE__*/React.createElement("input", {
-    value: sku,
-    onChange: e => setSku(e.target.value),
-    placeholder: "B004"
+  }, /*#__PURE__*/React.createElement("label", null, "品項名稱"), /*#__PURE__*/React.createElement("input", {
+    value: name,
+    onChange: e => setName(e.target.value),
+    placeholder: "蔓越莓餅乾"
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld"
   }, /*#__PURE__*/React.createElement("label", null, "單位"), /*#__PURE__*/React.createElement("input", {
     value: unit,
     onChange: e => setUnit(e.target.value)
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "名稱"), /*#__PURE__*/React.createElement("input", {
-    value: name,
-    onChange: e => setName(e.target.value),
-    placeholder: "蔓越莓餅乾"
   }))), /*#__PURE__*/React.createElement("button", {
     className: "btn wide",
     style: {
@@ -1729,14 +1780,22 @@ function ItemsPanel({
     className: "l"
   }, it.name, /*#__PURE__*/React.createElement("span", {
     className: "sub"
-  }, it.sku, "\u3000", it.active ? it.unit : "已停用")), /*#__PURE__*/React.createElement("td", {
+  }, it.active ? it.unit : "已停用")), /*#__PURE__*/React.createElement("td", {
     className: "big f"
   }, fmt(currentQty(db, it.id, "factory"))), /*#__PURE__*/React.createElement("td", {
     className: "big s"
-  }, fmt(currentQty(db, it.id, "store"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+  }, fmt(currentQty(db, it.id, "store"))), /*#__PURE__*/React.createElement("td", {
+    className: "oacts"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => rename(it)
+  }, "改名"), " ", /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
     onClick: () => toggle(it)
-  }, it.active ? "停用" : "啟用"))))))));
+  }, it.active ? "停用" : "啟用"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn danger mini",
+    onClick: () => removeItem(it)
+  }, "刪除"))))))));
 }
 function UsersPanel({
   db,
