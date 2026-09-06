@@ -477,6 +477,20 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .grid2 .badcell { background:var(--alert-bg); }
 .grid2 .todaycol { background:#eef4ef; }
 
+/* ---------- 可輸入的進出格 ---------- */
+.cl.mv2.edit { cursor:cell; border-radius:3px; min-height:20px; }
+.cl.mv2.edit:hover { background:#eef2ee; box-shadow:inset 0 0 0 1px #c7d2c8; }
+.cellin { width:100%; max-width:62px; padding:2px 4px; font-size:12px; text-align:center;
+  border:1px solid var(--green); border-radius:4px; min-height:22px; }
+.askmask { position:fixed; inset:0; background:rgba(28,40,32,.4); z-index:70;
+  display:flex; align-items:center; justify-content:center; padding:20px; }
+.askbox { background:var(--card); border-radius:12px; padding:22px 22px 16px;
+  width:100%; max-width:320px; text-align:center; }
+.askbox b { font-size:15px; }
+.askbox p { font-size:13px; color:var(--soft); margin:6px 0 16px; }
+.askacts { display:flex; gap:10px; }
+.askacts .btn { flex:1; }
+
 </style>
 </head>
 <body>
@@ -497,7 +511,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-06b";
+const VERSION = "2026-09-06c";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -813,11 +827,11 @@ function App() {
     flash,
     reload: () => load(true)
   };
-  const NAV = [["stock", "庫存總覽", "▤"], ["orders", "訂單", "▦"], ["ops", "庫存作業", "＋"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
+  const NAV = [["stock", "庫存總覽", "▤"], ["orders", "訂單", "▦"], ["ops", "調撥", "⇄"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
   const TITLE = {
     stock: "庫存總覽",
     orders: "訂單",
-    ops: "庫存作業",
+    ops: "調撥",
     settings: "設定",
     logs: "紀錄"
   };
@@ -881,7 +895,7 @@ function App() {
     onClick: () => setPage(id)
   }, /*#__PURE__*/React.createElement("span", {
     className: "ic"
-  }, ic), label === "庫存總覽" ? "庫存" : label === "庫存作業" ? "作業" : label))), toast && /*#__PURE__*/React.createElement("div", {
+  }, ic), label === "庫存總覽" ? "庫存" : label))), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast"
   }, toast));
 }
@@ -1113,8 +1127,15 @@ function LoginScreen({
 
 function StockPage({
   db,
+  me,
+  run,
+  logIt,
+  flash,
   reload
 }) {
+  const [edit, setEdit] = useState(null);
+  const [val, setVal] = useState("");
+  const [pending, setPending] = useState(null);
   const now = new Date();
   const [ym, setYm] = useState(now.getFullYear() + "-" + pad(now.getMonth() + 1));
   const [view, setView] = useState("all");
@@ -1138,12 +1159,74 @@ function StockPage({
   const short = useMemo(() => shortageScan(db, y, m), [db, y, m]);
   const shortCount = short.length;
   const locsOf = () => view === "all" ? ["factory", "store"] : [view];
-  const moveCell = r => locsOf().map(w => {
+  const keyOf = (itemId, loc, date) => itemId + "|" + loc + "|" + date;
+  const writeEntry = async (itemId, loc, date, qty, type, note) => {
+    const before = balanceAt(db, itemId, loc, date);
+    await run(async () => {
+      const r = await sb.from("stock_entries").insert({
+        entry_date: date,
+        loc,
+        item_id: itemId,
+        qty,
+        type,
+        before_qty: before,
+        after_qty: before + qty,
+        note: note || null,
+        operator_id: me.id,
+        operator_name: me.name
+      });
+      if (r.error) throw r.error;
+      const it = db.items.find(i => i.id === itemId);
+      await logIt(type === "in" ? "入庫" : "盤點調整", date + "　" + LOC_NAME[loc] + "　" + (it ? it.name : "") + "　" + (qty > 0 ? "+" : "") + qty + "　（月表輸入）");
+    }, type === "in" ? "已入庫" : "已調整");
+  };
+  const commitCell = async (itemId, loc, date) => {
+    const n = Number(val);
+    setEdit(null);
+    setVal("");
+    if (!n) return;
+    if (n > 0) {
+      setPending({
+        itemId,
+        loc,
+        date,
+        qty: n
+      });
+    } else {
+      await writeEntry(itemId, loc, date, n, "adjust", "盤點校正");
+    }
+  };
+  const moveCell = (r, item) => locsOf().map(w => {
     const v = w === "factory" ? r.fIn - r.fOut : r.sIn - r.sOut;
     const c = w === "factory" ? "f" : "s";
+    const k = keyOf(item.id, w, r.date);
+    const on = edit === k;
+    if (on) {
+      return /*#__PURE__*/React.createElement("input", {
+        key: w,
+        className: "cellin",
+        type: "number",
+        autoFocus: true,
+        value: val,
+        onChange: e => setVal(e.target.value),
+        onBlur: () => commitCell(item.id, w, r.date),
+        onKeyDown: e => {
+          if (e.key === "Enter") commitCell(item.id, w, r.date);
+          if (e.key === "Escape") {
+            setEdit(null);
+            setVal("");
+          }
+        }
+      });
+    }
     return /*#__PURE__*/React.createElement("div", {
       key: w,
-      className: "cl mv2 " + c + (v < 0 ? " minus" : v > 0 ? " plus" : "")
+      className: "cl mv2 edit " + c + (v < 0 ? " minus" : v > 0 ? " plus" : ""),
+      onClick: () => {
+        setEdit(k);
+        setVal("");
+      },
+      title: "點一下輸入"
     }, v === 0 ? "" : (v > 0 ? "+" : "−") + fmt(Math.abs(v)));
   });
   const balCell = r => locsOf().map(w => {
@@ -1230,7 +1313,7 @@ function StockPage({
       key: r.date
     }, /*#__PURE__*/React.createElement("td", {
       className: "dgrp"
-    }, moveCell(r)), /*#__PURE__*/React.createElement("td", {
+    }, moveCell(r, item)), /*#__PURE__*/React.createElement("td", {
       className: bad ? "badcell" : ""
     }, balCell(r)));
   })))))))), /*#__PURE__*/React.createElement("p", {
@@ -1546,53 +1629,33 @@ function OpsPage({
   logIt,
   flash
 }) {
-  const [tab, setTab] = useState("in");
   const active = db.items.filter(i => i.active);
   const [loc, setLoc] = useState("factory");
   const [item, setItem] = useState(active[0] ? active[0].id : "");
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
+  const [date, setDate] = useState(today());
   const nameOf = id => {
     const it = db.items.find(i => i.id === id);
     return it ? it.name : "";
   };
-  const reset = () => {
-    setQty("");
-    setNote("");
-  };
-  const before = item ? currentQty(db, item, loc) : 0;
+  const before = item ? balanceAt(db, item, loc, date) : 0;
   const n = Number(qty) || 0;
   const to = loc === "factory" ? "store" : "factory";
-  const base = {
-    loc,
-    item_id: item,
-    operator_id: me.id,
-    operator_name: me.name,
-    entry_date: today()
-  };
-  const doIn = async () => {
-    if (!item) return flash("請選品項");
-    if (!(n > 0)) return flash("請填數量");
-    const ok = await run(async () => {
-      const r = await sb.from("stock_entries").insert(Object.assign({}, base, {
-        qty: n,
-        type: "in",
-        before_qty: before,
-        after_qty: before + n,
-        note: note || null
-      }));
-      if (r.error) throw r.error;
-      await logIt("入庫", LOC_NAME[loc] + "　" + nameOf(item) + "　+" + n + (note ? "　" + note : ""));
-    }, "入庫完成");
-    if (ok) reset();
-  };
   const doTransfer = async () => {
     if (!item) return flash("請選品項");
     if (!(n > 0)) return flash("請填數量");
-    const bTo = currentQty(db, item, to);
+    const bTo = balanceAt(db, item, to, date);
     const tid = crypto.randomUUID();
+    const base = {
+      entry_date: date,
+      item_id: item,
+      operator_id: me.id,
+      operator_name: me.name
+    };
     const ok = await run(async () => {
       const r = await sb.from("stock_entries").insert([Object.assign({}, base, {
+        loc,
         qty: -n,
         type: "transfer_out",
         before_qty: before,
@@ -1609,55 +1672,36 @@ function OpsPage({
         transfer_id: tid
       })]);
       if (r.error) throw r.error;
-      await logIt("調撥", nameOf(item) + "　" + LOC_NAME[loc] + " → " + LOC_NAME[to] + "　" + n + (note ? "　" + note : ""));
+      await logIt("調撥", date + "　" + nameOf(item) + "　" + LOC_NAME[loc] + " → " + LOC_NAME[to] + "　" + n + (note ? "　" + note : ""));
     }, "調撥完成，總庫存不變");
-    if (ok) reset();
-  };
-  const doAdjust = async () => {
-    if (!item) return flash("請選品項");
-    if (!n) return flash("請填調整量，短少填負數");
-    if (!note.trim()) return flash("請填原因");
-    const ok = await run(async () => {
-      const r = await sb.from("stock_entries").insert(Object.assign({}, base, {
-        qty: n,
-        type: "adjust",
-        before_qty: before,
-        after_qty: before + n,
-        note: note
-      }));
-      if (r.error) throw r.error;
-      await logIt("盤點調整", LOC_NAME[loc] + "　" + nameOf(item) + "　" + (n > 0 ? "+" : "") + n + "　" + note);
-    }, "已調整");
-    if (ok) reset();
-  };
-  const recent = db.entries.slice().reverse().slice(0, 10);
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg2"
-  }, "庫存作業"), /*#__PURE__*/React.createElement("p", {
-    className: "lede"
-  }, "全部記在今天（", today(), "），送出後立刻改變庫存，不能補登過去的日期。"), /*#__PURE__*/React.createElement("div", {
-    className: "tabs"
-  }, [["in", "入庫"], ["transfer", "調撥"], ["adjust", "盤點調整"]].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
-    key: id,
-    className: tab === id ? "on" : "",
-    onClick: () => {
-      setTab(id);
-      reset();
+    if (ok) {
+      setQty("");
+      setNote("");
     }
-  }, label))), /*#__PURE__*/React.createElement("div", {
+  };
+  const recent = db.entries.slice().reverse().slice(0, 12);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "lede"
+  }, "調撥要在這裡做，因為它同時動工廠和門市兩邊。入庫和盤點校正直接在庫存總覽的格子輸入就好。"), /*#__PURE__*/React.createElement("div", {
     className: "card pad"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fields"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, tab === "transfer" ? "從哪裡出" : "地點"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("label", null, "從哪裡出"), /*#__PURE__*/React.createElement("div", {
     className: "seg"
   }, LOCS.map(l => /*#__PURE__*/React.createElement("button", {
     key: l.id,
     className: loc === l.id ? "on" : "",
     onClick: () => setLoc(l.id)
   }, l.name)))), /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "日期"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
   }, /*#__PURE__*/React.createElement("label", null, "品項"), /*#__PURE__*/React.createElement("select", {
     value: item,
     onChange: e => setItem(e.target.value)
@@ -1665,39 +1709,39 @@ function OpsPage({
     key: i.id,
     value: i.id
   }, i.name)))), /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, tab === "in" ? "包裝完成數量" : tab === "transfer" ? "調撥數量" : "調整量，短少填 -5"), /*#__PURE__*/React.createElement("input", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "調撥數量"), /*#__PURE__*/React.createElement("input", {
     type: "number",
-    inputMode: tab === "adjust" ? "text" : "numeric",
+    inputMode: "numeric",
     value: qty,
     onChange: e => setQty(e.target.value)
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, tab === "adjust" ? "原因" : "備註"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "備註"), /*#__PURE__*/React.createElement("input", {
     value: note,
     onChange: e => setNote(e.target.value),
-    placeholder: tab === "adjust" ? "9/3 盤點短少 5 包" : "可留白"
+    placeholder: "可留白"
   }))), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, tab === "transfer" ? LOC_NAME[loc] + "目前 " + fmt(before) + (n ? "　→　調撥後 " + fmt(before - n) : "") + "。總庫存不變。" : LOC_NAME[loc] + "目前 " + fmt(before) + (n ? "　→　之後 " + fmt(before + n) : "")), tab === "transfer" && n > before && /*#__PURE__*/React.createElement("p", {
+  }, LOC_NAME[loc], "在 ", date, " 是 ", fmt(before), n ? "　→　調撥後 " + fmt(before - n) : "", "。總庫存不變。"), n > before && /*#__PURE__*/React.createElement("p", {
     className: "note warn"
-  }, "調撥量超過", LOC_NAME[loc], "現有庫存，送出後會變負數。"), tab === "adjust" && /*#__PURE__*/React.createElement("p", {
-    className: "note"
-  }, "系統剛開始用的時候，在這裡把現有數量輸進去就是開帳。"), /*#__PURE__*/React.createElement("button", {
+  }, "調撥量超過", LOC_NAME[loc], "當天的庫存，送出後會變負數。"), /*#__PURE__*/React.createElement("button", {
     className: "btn wide",
     style: {
       marginTop: 14
     },
-    onClick: tab === "in" ? doIn : tab === "transfer" ? doTransfer : doAdjust
-  }, tab === "in" ? "入庫" : tab === "transfer" ? "調撥到" + LOC_NAME[to] : "調整")), /*#__PURE__*/React.createElement("h3", {
+    onClick: doTransfer
+  }, "調撥到", LOC_NAME[to])), /*#__PURE__*/React.createElement("h3", {
     className: "sec"
   }, "最近的異動"), /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, recent.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
-  }, "還沒有任何異動。") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+  }, "還沒有任何異動。") : /*#__PURE__*/React.createElement("div", {
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     className: "l"
-  }, "時間"), /*#__PURE__*/React.createElement("th", {
+  }, "日期"), /*#__PURE__*/React.createElement("th", {
     className: "l"
   }, "品項"), /*#__PURE__*/React.createElement("th", {
     className: "l"
@@ -1707,7 +1751,7 @@ function OpsPage({
     key: e.id
   }, /*#__PURE__*/React.createElement("td", {
     className: "l faint"
-  }, e.ts), /*#__PURE__*/React.createElement("td", {
+  }, e.date), /*#__PURE__*/React.createElement("td", {
     className: "l"
   }, nameOf(e.itemId), /*#__PURE__*/React.createElement("span", {
     className: "sub"
@@ -1719,7 +1763,7 @@ function OpsPage({
     className: "big"
   }, fmt(e.after)), /*#__PURE__*/React.createElement("td", {
     className: "l"
-  }, e.operator)))))));
+  }, e.operator))))))));
 }
 
 /* ------------------------------------------------------------------ */
