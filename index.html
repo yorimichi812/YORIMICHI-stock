@@ -511,7 +511,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-06c";
+const VERSION = "2026-09-06d";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1136,6 +1136,7 @@ function StockPage({
   const [edit, setEdit] = useState(null);
   const [val, setVal] = useState("");
   const [pending, setPending] = useState(null);
+  const doneRef = useRef(false);
   const now = new Date();
   const [ym, setYm] = useState(now.getFullYear() + "-" + pad(now.getMonth() + 1));
   const [view, setView] = useState("all");
@@ -1209,10 +1210,20 @@ function StockPage({
         autoFocus: true,
         value: val,
         onChange: e => setVal(e.target.value),
-        onBlur: () => commitCell(item.id, w, r.date),
+        onBlur: () => {
+          if (doneRef.current) {
+            doneRef.current = false;
+            return;
+          }
+          commitCell(item.id, w, r.date);
+        },
         onKeyDown: e => {
-          if (e.key === "Enter") commitCell(item.id, w, r.date);
+          if (e.key === "Enter") {
+            doneRef.current = true;
+            commitCell(item.id, w, r.date);
+          }
           if (e.key === "Escape") {
+            doneRef.current = true;
             setEdit(null);
             setVal("");
           }
@@ -1316,9 +1327,33 @@ function StockPage({
     }, moveCell(r, item)), /*#__PURE__*/React.createElement("td", {
       className: bad ? "badcell" : ""
     }, balCell(r)));
-  })))))))), /*#__PURE__*/React.createElement("p", {
+  })))))))), pending && /*#__PURE__*/React.createElement("div", {
+    className: "askmask",
+    onClick: e => e.target === e.currentTarget && setPending(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "askbox"
+  }, /*#__PURE__*/React.createElement("b", null, (db.items.find(i => i.id === pending.itemId) || {}).name), /*#__PURE__*/React.createElement("p", null, pending.date, "\u3000", LOC_NAME[pending.loc], "\u3000+", fmt(pending.qty)), /*#__PURE__*/React.createElement("div", {
+    className: "askacts"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: async () => {
+      const p = pending;
+      setPending(null);
+      await writeEntry(p.itemId, p.loc, p.date, p.qty, "in", "月表輸入");
+    }
+  }, "入庫"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost",
+    onClick: async () => {
+      const p = pending;
+      setPending(null);
+      await writeEntry(p.itemId, p.loc, p.date, p.qty, "adjust", "盤點校正");
+    }
+  }, "盤點校正")), /*#__PURE__*/React.createElement("button", {
+    className: "linky center",
+    onClick: () => setPending(null)
+  }, "取消"))), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "進是當天入庫或調撥進來的，出是當天出貨、調撥出去或盤點短少的，餘是那天結束時剩下的。 沒有進出的日子顯示一個點。餘變紅代表不夠。"));
+  }, "點一下「進出」格子就能輸入。正數會問你是入庫還是盤點校正，負數直接記成盤點校正。 調撥要到左邊的調撥頁，因為它同時動工廠和門市兩邊。"));
 }
 
 /* ------------------------------------------------------------------ */
