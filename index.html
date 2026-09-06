@@ -360,13 +360,16 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05l";
+const VERSION = "2026-09-05m";
 const MAIL_DOMAIN = "likeadream.local";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
 const PIN_TAIL = "-ld24";
 const padPin = p => p + PIN_TAIL;
+
+/* 登入只靠點名字，帳號由系統自己產生，沒人需要記它 */
+const autoUser = () => "u" + Math.random().toString(36).slice(2, 10);
 const SUPABASE_URL = "https://ogjgxzzymdjyxcdnzuee.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
 const configured = SUPABASE_URL.indexOf("你的") === -1 && SUPABASE_ANON_KEY.indexOf("你的") === -1;
@@ -848,7 +851,7 @@ function LoginScreen({
   }, dir.map(u => /*#__PURE__*/React.createElement("button", {
     key: u.id,
     onClick: () => setPicked(u)
-  }, u.name))), /*#__PURE__*/React.createElement("button", {
+  }, u.name))), dir !== null && dir.length === 0 && /*#__PURE__*/React.createElement("button", {
     className: "linky center",
     onClick: () => setManual(true)
   }, "用完整帳號登入")), /*#__PURE__*/React.createElement("div", {
@@ -1554,7 +1557,6 @@ function UsersPanel({
 }) {
   const [pw1, setPw1] = useState("");
   const [nName, setNName] = useState("");
-  const [nUser, setNUser] = useState("");
   const [nPw, setNPw] = useState("");
   const [nRole, setNRole] = useState("staff");
   const [busy, setBusy] = useState(false);
@@ -1572,9 +1574,9 @@ function UsersPanel({
   };
   const addPerson = async () => {
     if (!nName.trim()) return flash("請填姓名");
-    if (!/^[a-zA-Z0-9._-]+$/.test(nUser.trim())) return flash("帳號只能用英文、數字、點和底線");
     if (nPw.length < 4) return flash("密碼至少 4 碼");
-    const email = nUser.trim().toLowerCase() + "@" + MAIL_DOMAIN;
+    const uname = autoUser();
+    const email = uname + "@" + MAIL_DOMAIN;
     setBusy(true);
     try {
       // 用獨立的連線註冊，才不會把自己目前的登入狀態換掉
@@ -1600,14 +1602,13 @@ function UsersPanel({
       if (!data.user) throw new Error("建立失敗，請確認 Supabase 的 Confirm email 已關閉");
       const up = await sb.from("app_users").update({
         name: nName.trim(),
-        username: nUser.trim().toLowerCase(),
+        username: uname,
         role: nRole,
         active: true
       }).eq("id", data.user.id);
       if (up.error) throw up.error;
-      await logIt("新增人員", nName.trim() + "（" + nUser.trim().toLowerCase() + "）　" + (nRole === "admin" ? "管理者" : "一般"));
+      await logIt("新增人員", nName.trim() + "　" + (nRole === "admin" ? "管理者" : "一般"));
       setNName("");
-      setNUser("");
       setNPw("");
       await reload();
       flash("已建立 " + nName.trim() + " 的帳號");
@@ -1657,7 +1658,7 @@ function UsersPanel({
     className: "alertbox"
   }, /*#__PURE__*/React.createElement("b", null, "有 ", pending.length, " 個帳號還沒啟用"), /*#__PURE__*/React.createElement("ul", null, pending.map(u => /*#__PURE__*/React.createElement("li", {
     key: u.id
-  }, u.name, "（", u.username || "—", "）")))), isAdmin && /*#__PURE__*/React.createElement("section", {
+  }, u.name)))), isAdmin && /*#__PURE__*/React.createElement("section", {
     className: "card"
   }, /*#__PURE__*/React.createElement("header", {
     className: "chead",
@@ -1677,15 +1678,6 @@ function UsersPanel({
     autoComplete: "off",
     onChange: e => setNName(e.target.value),
     placeholder: "陳阿明"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "登入帳號，英文"), /*#__PURE__*/React.createElement("input", {
-    value: nUser,
-    autoCapitalize: "none",
-    autoComplete: "off",
-    name: "newuser",
-    onChange: e => setNUser(e.target.value),
-    placeholder: "ming"
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld"
   }, /*#__PURE__*/React.createElement("label", null, "密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
@@ -1712,7 +1704,7 @@ function UsersPanel({
     onClick: addPerson
   }, busy ? "建立中…" : "建立帳號"), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "建好之後把網址和這組帳號密碼給他，他在登入頁就會看到自己的名字。 忘記密碼沒辦法在這裡重設，要到 Supabase 後台的 Authentication 改。"))), /*#__PURE__*/React.createElement("section", {
+  }, "建好之後把網址和這組密碼給他，他在登入頁點自己的名字、輸入密碼就能進來。 忘記密碼沒辦法在這裡重設，要到 Supabase 後台的 Authentication 改。"))), /*#__PURE__*/React.createElement("section", {
     className: "card"
   }, /*#__PURE__*/React.createElement("header", {
     className: "chead",
@@ -1759,9 +1751,9 @@ function UsersPanel({
     className: "l"
   }, u.name, u.id === me.id && /*#__PURE__*/React.createElement("span", {
     className: "faint"
-  }, "（你）"), /*#__PURE__*/React.createElement("span", {
+  }, "（你）"), !u.active && /*#__PURE__*/React.createElement("span", {
     className: "sub"
-  }, u.username || "", u.active ? "" : "　已停用")), /*#__PURE__*/React.createElement("td", {
+  }, "已停用")), /*#__PURE__*/React.createElement("td", {
     className: "l"
   }, u.role === "admin" ? /*#__PURE__*/React.createElement("span", {
     className: "tag admin"
