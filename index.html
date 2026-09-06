@@ -463,6 +463,20 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
   .cl.bal { font-size:12px; }
 }
 
+/* ---------- 矩陣：完整格線 ---------- */
+.grid2 { border-collapse:separate; border-spacing:0; }
+.grid2 th, .grid2 td { border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); }
+.grid2 thead tr:first-child th { border-top:1px solid var(--rule); }
+.grid2 .stick { border-right:2px solid #cfd6cd; }
+.grid2 thead th.dgrp, .grid2 tbody td.dgrp { border-left:2px solid #cfd6cd; }
+.grid2 tbody tr:last-child td { border-bottom:1px solid var(--rule); }
+.grid2 td { vertical-align:middle; }
+/* 工廠與門市之間的分隔 */
+.grid2 .cl + .cl { border-top:1px dotted #dcdfd9; padding-top:3px; margin-top:3px; }
+.legend .cl + .cl { border-top:1px dotted #dcdfd9; padding-top:3px; margin-top:3px; }
+.grid2 .badcell { background:var(--alert-bg); }
+.grid2 .todaycol { background:#eef4ef; }
+
 </style>
 </head>
 <body>
@@ -483,7 +497,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05z";
+const VERSION = "2026-09-06b";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1190,13 +1204,13 @@ function StockPage({
   }, "品項"), days.map(r => /*#__PURE__*/React.createElement("th", {
     key: r.date,
     colSpan: 2,
-    className: "dgrp" + (r.date === t ? " todaycol" : "")
+    className: "dgrp"
   }, mdOf(r.date), /*#__PURE__*/React.createElement("span", null, "(", weekdayOf(r.date), ")")))), /*#__PURE__*/React.createElement("tr", null, days.map(r => /*#__PURE__*/React.createElement(React.Fragment, {
     key: r.date
   }, /*#__PURE__*/React.createElement("th", {
-    className: "sub3 dgrp" + (r.date === t ? " todaycol" : "")
+    className: "sub3 dgrp"
   }, "進出"), /*#__PURE__*/React.createElement("th", {
-    className: "sub3" + (r.date === t ? " todaycol" : "")
+    className: "sub3"
   }, "庫存"))))), /*#__PURE__*/React.createElement("tbody", null, grid.map(({
     item,
     rows
@@ -1212,13 +1226,12 @@ function StockPage({
     className: "legend"
   }, legend()))), rows.map(r => {
     const bad = view !== "store" && r.fLeft < 0 || view !== "factory" && r.sLeft < 0;
-    const tc = r.date === t ? " todaycol" : "";
     return /*#__PURE__*/React.createElement(React.Fragment, {
       key: r.date
     }, /*#__PURE__*/React.createElement("td", {
-      className: "dgrp" + tc
+      className: "dgrp"
     }, moveCell(r)), /*#__PURE__*/React.createElement("td", {
-      className: (bad ? "badcell" : "") + tc
+      className: bad ? "badcell" : ""
     }, balCell(r)));
   })))))))), /*#__PURE__*/React.createElement("p", {
     className: "note"
