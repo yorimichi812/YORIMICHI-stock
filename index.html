@@ -373,6 +373,41 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .orders .oacts { white-space:nowrap; text-align:right; }
 .orders td div + div { margin-top:3px; }
 
+/* ---------- 訂單表格欄寬 ---------- */
+.orders { table-layout:fixed; }
+.orders th:nth-child(1), .orders td:nth-child(1) { width:13%; }
+.orders th:nth-child(2), .orders td:nth-child(2) { width:15%; }
+.orders th:nth-child(3), .orders td:nth-child(3) { width:24%; }
+.orders th:nth-child(4), .orders td:nth-child(4) { width:9%; text-align:right; }
+.orders th:nth-child(5), .orders td:nth-child(5) { width:12%; }
+.orders th:nth-child(6), .orders td:nth-child(6) { width:13%; }
+.orders th:nth-child(7), .orders td:nth-child(7) { width:14%; }
+.orders td { overflow:hidden; text-overflow:ellipsis; }
+.orders td:nth-child(3) { white-space:normal; }
+@media (max-width:860px) {
+  .orders { table-layout:auto; min-width:660px; }
+  .orders th, .orders td { width:auto !important; }
+}
+
+/* ---------- 訂單表格：好掃的版本 ---------- */
+.orders th:nth-child(1), .orders td:nth-child(1) { width:11%; }
+.orders th:nth-child(2), .orders td:nth-child(2) { width:16%; }
+.orders th:nth-child(3), .orders td:nth-child(3) { width:26%; }
+.orders th:nth-child(4), .orders td:nth-child(4) { width:8%; }
+.orders th:nth-child(5), .orders td:nth-child(5) { width:10%; }
+.orders th:nth-child(6), .orders td:nth-child(6) { width:12%; }
+.orders th:nth-child(7), .orders td:nth-child(7) { width:17%; }
+.orders .odate { font-size:16px; font-weight:700; letter-spacing:-.01em; }
+.orders tbody tr:nth-child(even) td { background:#fcfbf7; }
+.orders tbody tr:hover td { background:#f5f7f4; }
+.orders tr.otoday td { background:#eef4ef; box-shadow:inset 0 0 0 0 transparent; }
+.orders tr.otoday td:first-child { box-shadow:inset 3px 0 0 var(--green); }
+.orders tr.otoday .odate { color:var(--green); }
+.orders tr.opast td { color:#9aa39c; }
+.orders tr.opast .odate { color:#aab2ab; font-weight:600; }
+.orders tr.opast .ocust { font-weight:500; }
+.orders td:nth-child(4) .big { font-size:15px; }
+
 </style>
 </head>
 <body>
@@ -393,7 +428,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05s";
+const VERSION = "2026-09-05u";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1147,9 +1182,7 @@ function OrdersPage({
       if (error) throw error;
     }, "已刪除，內容留在紀錄裡");
   };
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "pg2"
-  }, "訂單"), /*#__PURE__*/React.createElement("p", {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "lede"
   }, "輸入就代表會照這天出貨。不出貨就刪掉，刪除內容完整留在紀錄。"), /*#__PURE__*/React.createElement("div", {
     className: "toolrow"
@@ -1197,38 +1230,44 @@ function OrdersPage({
     className: "l"
   }, "出貨地點"), /*#__PURE__*/React.createElement("th", {
     className: "l"
-  }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, list.map(o => /*#__PURE__*/React.createElement("tr", {
-    key: o.id
-  }, /*#__PURE__*/React.createElement("td", {
-    className: "l"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "odate"
-  }, o.date), /*#__PURE__*/React.createElement("span", {
-    className: "sub"
-  }, "週", weekdayOf(o.date))), /*#__PURE__*/React.createElement("td", {
-    className: "l ocust"
-  }, o.customer), /*#__PURE__*/React.createElement("td", {
-    className: "l"
-  }, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
-    key: i
-  }, nameOf(l.itemId)))), /*#__PURE__*/React.createElement("td", null, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "big"
-  }, fmt(l.qty)))), /*#__PURE__*/React.createElement("td", {
-    className: "l"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "tag " + (o.loc === "factory" ? "f" : "s")
-  }, LOC_NAME[o.loc])), /*#__PURE__*/React.createElement("td", {
-    className: "l faint"
-  }, o.editedBy ? o.editedBy + "（改）" : o.createdBy || "—"), /*#__PURE__*/React.createElement("td", {
-    className: "oacts"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn ghost mini",
-    onClick: () => setEditing(o)
-  }, "修改"), " ", /*#__PURE__*/React.createElement("button", {
-    className: "btn danger mini",
-    onClick: () => remove(o)
-  }, "刪除")))))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
+  }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, list.map(o => {
+    const isToday = o.date === today();
+    const isPast = o.date < today();
+    const sameYear = o.date.slice(0, 4) === today().slice(0, 4);
+    return /*#__PURE__*/React.createElement("tr", {
+      key: o.id,
+      className: isToday ? "otoday" : isPast ? "opast" : ""
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "l"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "odate"
+    }, mdOf(o.date)), /*#__PURE__*/React.createElement("span", {
+      className: "sub"
+    }, sameYear ? "" : o.date.slice(0, 4) + " ", "週", weekdayOf(o.date), isToday ? "・今天" : "")), /*#__PURE__*/React.createElement("td", {
+      className: "l ocust"
+    }, o.customer), /*#__PURE__*/React.createElement("td", {
+      className: "l"
+    }, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+      key: i
+    }, nameOf(l.itemId)))), /*#__PURE__*/React.createElement("td", null, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "big"
+    }, fmt(l.qty)))), /*#__PURE__*/React.createElement("td", {
+      className: "l"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tag " + (o.loc === "factory" ? "f" : "s")
+    }, LOC_NAME[o.loc])), /*#__PURE__*/React.createElement("td", {
+      className: "l faint"
+    }, o.editedBy ? o.editedBy + "（改）" : o.createdBy || "—"), /*#__PURE__*/React.createElement("td", {
+      className: "oacts"
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn ghost mini",
+      onClick: () => setEditing(o)
+    }, "修改"), " ", /*#__PURE__*/React.createElement("button", {
+      className: "btn danger mini",
+      onClick: () => remove(o)
+    }, "刪除")));
+  }))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
     db: db,
     me: me,
     run: run,
