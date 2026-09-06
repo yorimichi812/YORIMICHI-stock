@@ -360,7 +360,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05n";
+const VERSION = "2026-09-05p";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1607,6 +1607,19 @@ function UsersPanel({
       await logIt("重設密碼", u.name);
     }, "密碼已重設");
   };
+  const removePerson = async u => {
+    if (u.id === me.id) return flash("不能刪除自己");
+    if (!window.confirm("刪除 " + u.name + "？\n\n他就再也不能登入了。\n他做過的庫存異動和操作紀錄會保留，上面的名字也還在。")) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("delete_staff", {
+        p_user: u.id
+      });
+      if (error) throw error;
+      await logIt("刪除人員", u.name);
+    }, "已刪除 " + u.name);
+  };
   const rename = async u => {
     const nv = window.prompt("這個人在紀錄上顯示的名字", u.name);
     if (!nv || !nv.trim()) return;
@@ -1756,7 +1769,10 @@ function UsersPanel({
   }, u.role === "admin" ? "降為一般" : "設為管理者"), " ", /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
     onClick: () => toggle(u)
-  }, u.active ? "停用" : "啟用")))))))), !isAdmin && /*#__PURE__*/React.createElement("p", {
+  }, u.active ? "停用" : "啟用"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn danger mini",
+    onClick: () => removePerson(u)
+  }, "刪除")))))))), !isAdmin && /*#__PURE__*/React.createElement("p", {
     className: "note"
   }, "要新增人員或改別人的資料，請管理者處理。"));
 }
