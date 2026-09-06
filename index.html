@@ -408,6 +408,16 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .orders tr.opast .ocust { font-weight:500; }
 .orders td:nth-child(4) .big { font-size:15px; }
 
+/* ---------- 訂單表格：只留交錯底色，欄寬重排 ---------- */
+.orders tr.otoday td, .orders tr.opast td { background:inherit; color:inherit; box-shadow:none; }
+.orders th:nth-child(1), .orders td:nth-child(1) { width:12%; }
+.orders th:nth-child(2), .orders td:nth-child(2) { width:18%; }
+.orders th:nth-child(3), .orders td:nth-child(3) { width:11%; }
+.orders th:nth-child(4), .orders td:nth-child(4) { width:11%; }
+.orders th:nth-child(5), .orders td:nth-child(5) { width:13%; }
+.orders th:nth-child(6), .orders td:nth-child(6) { width:16%; }
+.orders th:nth-child(7), .orders td:nth-child(7) { width:19%; }
+
 </style>
 </head>
 <body>
@@ -428,7 +438,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05u";
+const VERSION = "2026-09-05v";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1231,19 +1241,16 @@ function OrdersPage({
   }, "出貨地點"), /*#__PURE__*/React.createElement("th", {
     className: "l"
   }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, list.map(o => {
-    const isToday = o.date === today();
-    const isPast = o.date < today();
     const sameYear = o.date.slice(0, 4) === today().slice(0, 4);
     return /*#__PURE__*/React.createElement("tr", {
-      key: o.id,
-      className: isToday ? "otoday" : isPast ? "opast" : ""
+      key: o.id
     }, /*#__PURE__*/React.createElement("td", {
       className: "l"
     }, /*#__PURE__*/React.createElement("span", {
       className: "odate"
     }, mdOf(o.date)), /*#__PURE__*/React.createElement("span", {
       className: "sub"
-    }, sameYear ? "" : o.date.slice(0, 4) + " ", "週", weekdayOf(o.date), isToday ? "・今天" : "")), /*#__PURE__*/React.createElement("td", {
+    }, sameYear ? "" : o.date.slice(0, 4) + " ", "週", weekdayOf(o.date))), /*#__PURE__*/React.createElement("td", {
       className: "l ocust"
     }, o.customer), /*#__PURE__*/React.createElement("td", {
       className: "l"
