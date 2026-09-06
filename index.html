@@ -496,6 +496,9 @@ input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 input[type=number] { -moz-appearance:textfield; appearance:textfield; }
 
+/* ---------- 訂單數量置中 ---------- */
+.orders th:nth-child(4), .orders td:nth-child(4) { text-align:center; }
+
 </style>
 </head>
 <body>
@@ -516,7 +519,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-06f";
+const VERSION = "2026-09-06h";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1719,7 +1722,7 @@ function OpsPage({
       setNote("");
     }
   };
-  const recent = db.entries.slice().reverse().slice(0, 12);
+  const recent = db.entries.filter(e => e.type === "transfer_out" || e.type === "transfer_in").slice().reverse().slice(0, 12);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "lede"
   }, "撥調要在這裡做，因為它同時動工廠和門市兩邊。入庫和盤點校正直接在庫存總覽的格子輸入就好。"), /*#__PURE__*/React.createElement("div", {
@@ -1773,11 +1776,11 @@ function OpsPage({
     onClick: doTransfer
   }, "撥調到", LOC_NAME[to])), /*#__PURE__*/React.createElement("h3", {
     className: "sec"
-  }, "最近的異動"), /*#__PURE__*/React.createElement("div", {
+  }, "最近的撥調"), /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, recent.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
-  }, "還沒有任何異動。") : /*#__PURE__*/React.createElement("div", {
+  }, "還沒有撥調紀錄。") : /*#__PURE__*/React.createElement("div", {
     className: "scroll"
   }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     className: "l"
