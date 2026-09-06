@@ -340,6 +340,30 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .toolrow { display:flex; gap:10px; align-items:center; margin-bottom:14px; }
 .toolrow .btn { min-width:0; }
 
+/* ---------- 新增人員後的臨時碼提示 ---------- */
+.handout { background:var(--sand); border-radius:9px; padding:12px 14px; margin-bottom:14px; font-size:13px; }
+.handout b { font-size:14.5px; display:block; margin-bottom:4px; }
+.handout div { color:var(--soft); line-height:1.6; }
+.handout .linky { margin-left:0; padding-left:0; }
+
+/* ---------- 登入面板 ---------- */
+.gate { background:var(--cream); }
+.panel { width:100%; max-width:440px; background:var(--card); border:1px solid var(--rule);
+  border-radius:16px; padding:28px 26px 18px; box-shadow:0 2px 14px rgba(40,50,44,.06); }
+.ptitle { font-size:20px; font-weight:700; margin:0 0 4px; letter-spacing:.01em; }
+.prule { border:0; border-top:1px solid var(--hair); margin:18px 0 14px; }
+.phint { font-size:12.5px; color:var(--soft); line-height:1.7; margin:0 0 16px; }
+.pgroup { margin-bottom:14px; }
+.glabel { font-size:12px; color:var(--store); font-weight:600; margin-bottom:7px; }
+.pgroup .names { display:flex; flex-wrap:wrap; gap:8px; }
+.pgroup .names button { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:10px 18px; border-radius:9px; font-size:14.5px; min-height:44px; }
+.pgroup .names button:hover { border-color:var(--green); color:var(--green); background:#f4f7f4; }
+.btn.dark { background:var(--green-d); border-color:var(--green-d); }
+.pfoot { margin-top:18px; padding-top:14px; border-top:1px solid var(--hair);
+  font-size:11.5px; color:var(--faint); text-align:center; }
+.panel .ver { display:none; }
+
 </style>
 </head>
 <body>
@@ -360,7 +384,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-05p";
+const VERSION = "2026-09-05r";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -543,7 +567,8 @@ async function fetchAll() {
       name: u.name,
       username: u.username,
       role: u.role,
-      active: u.active
+      active: u.active,
+      mustSetPin: u.must_set_pin
     }))
   };
 }
@@ -639,6 +664,14 @@ function App() {
       return false;
     }
   };
+  if (me.mustSetPin) {
+    return /*#__PURE__*/React.createElement(SetPinGate, {
+      me: me,
+      flash: flash,
+      toast: toast,
+      onDone: () => load(true)
+    });
+  }
   const logIt = (action, summary, snapshot) => sb.from("audit_logs").insert({
     action,
     summary,
@@ -731,6 +764,78 @@ function App() {
 /* 設定說明與登入                                                      */
 /* ------------------------------------------------------------------ */
 
+function SetPinGate({
+  me,
+  flash,
+  toast,
+  onDone
+}) {
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (p1.length < 4) return flash("密碼至少 4 碼");
+    if (p1 !== p2) return flash("兩次輸入不一樣");
+    setBusy(true);
+    try {
+      const {
+        error
+      } = await sb.auth.updateUser({
+        password: p1 + PIN_TAIL
+      });
+      if (error) throw error;
+      const r = await sb.from("app_users").update({
+        must_set_pin: false
+      }).eq("id", me.id);
+      if (r.error) throw r.error;
+      await onDone();
+    } catch (e) {
+      console.error(e);
+      flash("設定失敗：" + (e && e.message || ""));
+      setBusy(false);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "gate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "box login"
+  }, /*#__PURE__*/React.createElement("h1", null, "設定你的密碼"), /*#__PURE__*/React.createElement("p", null, me.name, "，第一次進來要先設一組自己的 4 碼密碼，以後都用這組登入。"), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "新密碼"), /*#__PURE__*/React.createElement("input", {
+    className: "pin",
+    type: "password",
+    value: p1,
+    autoFocus: true,
+    maxLength: 20,
+    placeholder: "••••",
+    onChange: e => setP1(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "再輸入一次"), /*#__PURE__*/React.createElement("input", {
+    className: "pin",
+    type: "password",
+    value: p2,
+    maxLength: 20,
+    placeholder: "••••",
+    onChange: e => setP2(e.target.value),
+    onKeyDown: e => e.key === "Enter" && save()
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 16
+    },
+    disabled: busy,
+    onClick: save
+  }, busy ? "設定中…" : "設定完成"), /*#__PURE__*/React.createElement("button", {
+    className: "linky center",
+    onClick: () => sb.auth.signOut()
+  }, "換人登入")), toast && /*#__PURE__*/React.createElement("div", {
+    className: "toast"
+  }, toast));
+}
 function SetupHelp() {
   return /*#__PURE__*/React.createElement("div", {
     className: "gate"
@@ -775,11 +880,20 @@ function LoginScreen({
     setBusy(false);
     if (r.error) flash("密碼不對");
   };
+  const groups = [{
+    label: "管理者",
+    people: (dir || []).filter(u => u.role === "admin")
+  }, {
+    label: "人員",
+    people: (dir || []).filter(u => u.role !== "admin")
+  }].filter(g => g.people.length > 0);
   return /*#__PURE__*/React.createElement("div", {
     className: "gate"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "box login"
-  }, /*#__PURE__*/React.createElement("h1", null, "庫存管理"), picked ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "panel"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "ptitle"
+  }, "📦 順道庫存管理"), picked ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "picked"
   }, /*#__PURE__*/React.createElement("b", null, picked.name), /*#__PURE__*/React.createElement("button", {
     className: "linky",
@@ -807,7 +921,7 @@ function LoginScreen({
     disabled: busy,
     onClick: () => doLogin(picked.email)
   }, busy ? "登入中…" : "登入")) : manual ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "hint"
+    className: "phint"
   }, "用完整帳號登入。"), /*#__PURE__*/React.createElement("div", {
     className: "fld full"
   }, /*#__PURE__*/React.createElement("label", null, "帳號"), /*#__PURE__*/React.createElement("input", {
@@ -815,7 +929,7 @@ function LoginScreen({
     value: mail,
     autoCapitalize: "none",
     onChange: e => setMail(e.target.value),
-    placeholder: "ming@likeadream.local"
+    placeholder: "u001@likeadream.local"
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld full",
     style: {
@@ -836,23 +950,33 @@ function LoginScreen({
   }, busy ? "登入中…" : "登入"), /*#__PURE__*/React.createElement("button", {
     className: "linky center",
     onClick: () => setManual(false)
-  }, "回名字清單")) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "hint"
-  }, "請點你的名字進入。"), dir === null ? /*#__PURE__*/React.createElement("div", {
+  }, "回名字清單")) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("hr", {
+    className: "prule"
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "phint"
+  }, "請點選您的名字進入，輸入 4 碼密碼即可登入。"), dir === null ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
   }, "載入中…") : dir.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
-  }, "還沒有啟用中的人員。", /*#__PURE__*/React.createElement("br", null), "請用完整帳號登入後到「設定 → 帳號」新增。") : /*#__PURE__*/React.createElement("div", {
+  }, "還沒有啟用中的人員。", /*#__PURE__*/React.createElement("br", null), "請用完整帳號登入後到「設定 → 帳號」新增。") : groups.map(g => /*#__PURE__*/React.createElement("div", {
+    className: "pgroup",
+    key: g.label
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "glabel"
+  }, g.label), /*#__PURE__*/React.createElement("div", {
     className: "names"
-  }, dir.map(u => /*#__PURE__*/React.createElement("button", {
+  }, g.people.map(u => /*#__PURE__*/React.createElement("button", {
     key: u.id,
     onClick: () => setPicked(u)
-  }, u.name))), dir !== null && dir.length === 0 && /*#__PURE__*/React.createElement("button", {
-    className: "linky center",
+  }, u.name))))), dir !== null && dir.length === 0 && /*#__PURE__*/React.createElement("button", {
+    className: "btn dark wide",
+    style: {
+      marginTop: 18
+    },
     onClick: () => setManual(true)
-  }, "用完整帳號登入")), /*#__PURE__*/React.createElement("div", {
-    className: "ver"
-  }, "版本 ", VERSION)), toast && /*#__PURE__*/React.createElement("div", {
+  }, "🛠 用完整帳號登入")), /*#__PURE__*/React.createElement("div", {
+    className: "pfoot"
+  }, "版本 ", VERSION, "\u3000·\u3000手機可加入主畫面當 App 用")), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast"
   }, toast));
 }
@@ -1556,6 +1680,7 @@ function UsersPanel({
   const [nPw, setNPw] = useState("");
   const [nRole, setNRole] = useState("staff");
   const [busy, setBusy] = useState(false);
+  const [handout, setHandout] = useState(null);
   const isAdmin = me.role === "admin";
   const changePw = async () => {
     if (pw1.length < 4) return flash("新密碼至少 4 碼");
@@ -1582,10 +1707,13 @@ function UsersPanel({
       });
       if (error) throw error;
       await logIt("新增人員", nName.trim() + "　" + (nRole === "admin" ? "管理者" : "一般"));
+      setHandout({
+        name: nName.trim(),
+        pin: nPw
+      });
       setNName("");
       setNPw("");
       await reload();
-      flash("已建立 " + nName.trim() + " 的帳號");
     } catch (e) {
       console.error(e);
       flash("建立失敗：" + (e && e.message || ""));
@@ -1669,7 +1797,12 @@ function UsersPanel({
     className: "mark-dot"
   }), /*#__PURE__*/React.createElement("h3", null, "新增人員")), /*#__PURE__*/React.createElement("div", {
     className: "pad"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, handout && /*#__PURE__*/React.createElement("div", {
+    className: "handout"
+  }, /*#__PURE__*/React.createElement("b", null, handout.name, " 的臨時密碼是 ", handout.pin), /*#__PURE__*/React.createElement("div", null, "把它給本人。他第一次登入後，系統會要求他改成自己的 4 碼。"), /*#__PURE__*/React.createElement("button", {
+    className: "linky",
+    onClick: () => setHandout(null)
+  }, "知道了")), /*#__PURE__*/React.createElement("div", {
     className: "fields"
   }, /*#__PURE__*/React.createElement("div", {
     className: "fld"
@@ -1680,7 +1813,7 @@ function UsersPanel({
     placeholder: "陳阿明"
   })), /*#__PURE__*/React.createElement("div", {
     className: "fld"
-  }, /*#__PURE__*/React.createElement("label", null, "密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("label", null, "臨時密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
     type: "password",
     value: nPw,
     autoComplete: "new-password",
@@ -1704,7 +1837,7 @@ function UsersPanel({
     onClick: addPerson
   }, busy ? "建立中…" : "建立帳號"), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "建好之後把網址和這組密碼給他，他在登入頁點自己的名字、輸入密碼就能進來。 忘記密碼在下面那張表按「重設密碼」就好。"))), /*#__PURE__*/React.createElement("section", {
+  }, "這組密碼只是臨時的，他第一次登入後系統會要求他自己設一組。 忘記密碼就按下面那張表的「重設密碼」，一樣是給臨時碼。"))), /*#__PURE__*/React.createElement("section", {
     className: "card"
   }, /*#__PURE__*/React.createElement("header", {
     className: "chead",
