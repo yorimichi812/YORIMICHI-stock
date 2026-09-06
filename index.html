@@ -491,6 +491,11 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .askacts { display:flex; gap:10px; }
 .askacts .btn { flex:1; }
 
+/* ---------- 數字欄位不要上下箭頭 ---------- */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+
 </style>
 </head>
 <body>
@@ -511,7 +516,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-06e";
+const VERSION = "2026-09-06f";
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -1206,7 +1211,8 @@ function StockPage({
       return /*#__PURE__*/React.createElement("input", {
         key: w,
         className: "cellin",
-        type: "number",
+        type: "text",
+        inputMode: "text",
         autoFocus: true,
         value: val,
         onChange: e => setVal(e.target.value),
@@ -1625,9 +1631,8 @@ function OrderSheet({
     key: it.id,
     value: it.id
   }, it.name))), /*#__PURE__*/React.createElement("input", {
-    type: "number",
+    type: "text",
     inputMode: "numeric",
-    min: "1",
     value: l.qty,
     placeholder: "數量",
     onChange: e => setLine(i, {
@@ -1746,7 +1751,7 @@ function OpsPage({
   }, i.name)))), /*#__PURE__*/React.createElement("div", {
     className: "fld"
   }, /*#__PURE__*/React.createElement("label", null, "撥調數量"), /*#__PURE__*/React.createElement("input", {
-    type: "number",
+    type: "text",
     inputMode: "numeric",
     value: qty,
     onChange: e => setQty(e.target.value)
