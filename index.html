@@ -499,6 +499,17 @@ input[type=number] { -moz-appearance:textfield; appearance:textfield; }
 /* ---------- 訂單數量置中 ---------- */
 .orders th:nth-child(4), .orders td:nth-child(4) { text-align:center; }
 
+/* ---------- 安全庫存欄位與登入公告 ---------- */
+.minbox { width:64px; padding:5px 7px; border:1px solid var(--rule); border-radius:6px;
+  text-align:center; font-size:13px; min-height:32px; }
+.minbox:focus { border-color:var(--green); }
+.askbox.notice { max-width:420px; text-align:left; }
+.askbox.notice b { display:block; margin-bottom:12px; font-size:15px; }
+.lowtab { width:100%; font-size:13px; margin-bottom:16px; }
+.lowtab td { padding:6px 6px; border-bottom:1px solid var(--hair); text-align:right; }
+.lowtab td.l { text-align:left; }
+.nfoot { font-size:11.5px; color:var(--faint); text-align:center; margin:10px 0 0; }
+
 </style>
 </head>
 <body>
@@ -519,7 +530,8 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-06h";
+const VERSION = "2026-09-06k";
+const LOW_DAYS = 7;
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
    使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
@@ -632,22 +644,25 @@ function buildMonth(db, itemId, year, month) {
   }
   return rows;
 }
-function shortageScan(db, y, m) {
-  const from = today();
-  const to = plusDays(ALERT_DAYS);
+function lowStockScan(db) {
   const out = [];
-  for (const it of db.items) {
-    if (!it.active) continue;
-    const rows = buildMonth(db, it.id, y, m).filter(r => r.date >= from && r.date <= to);
-    for (const loc of ["factory", "store"]) {
-      const key = loc === "factory" ? "fLeft" : "sLeft";
-      const hit = rows.find(r => r[key] < 0);
-      if (hit) out.push({
-        item: it,
-        loc,
-        date: hit.date,
-        qty: hit[key]
-      });
+  for (let k = 0; k <= LOW_DAYS; k++) {
+    const d = plusDays(k);
+    for (const it of db.items) {
+      if (!it.active) continue;
+      for (const loc of ["factory", "store"]) {
+        const min = loc === "factory" ? it.minFactory : it.minStore;
+        if (!min) continue;
+        if (out.some(x => x.item.id === it.id && x.loc === loc)) continue;
+        const v = balanceAt(db, it.id, loc, d);
+        if (v < min) out.push({
+          item: it,
+          loc,
+          date: d,
+          qty: v,
+          min
+        });
+      }
     }
   }
   out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
@@ -670,7 +685,9 @@ async function fetchAll() {
       sku: i.sku,
       name: i.name,
       unit: i.unit,
-      active: i.active
+      active: i.active,
+      minFactory: i.min_factory || 0,
+      minStore: i.min_store || 0
     })),
     orders: (orders.data || []).map(o => ({
       id: o.id,
@@ -716,7 +733,8 @@ async function fetchAll() {
       username: u.username,
       role: u.role,
       active: u.active,
-      mustSetPin: u.must_set_pin
+      mustSetPin: u.must_set_pin,
+      noticeSeenOn: u.notice_seen_on
     }))
   };
 }
@@ -732,6 +750,7 @@ function App() {
   const [page, setPage] = useState("stock");
   const [toast, setToast] = useState("");
   const [navOpen, setNavOpen] = useState(false);
+  const [noticeClosed, setNoticeClosed] = useState(false);
   const timer = useRef(null);
   const flash = useCallback(m => {
     setToast(m);
@@ -812,6 +831,18 @@ function App() {
       return false;
     }
   };
+  const low = lowStockScan(db);
+  const showNotice = !noticeClosed && low.length > 0 && me.noticeSeenOn !== today();
+  const closeNotice = async () => {
+    setNoticeClosed(true);
+    try {
+      await sb.from("app_users").update({
+        notice_seen_on: today()
+      }).eq("id", me.id);
+    } catch (e) {
+      console.error(e);
+    }
+  };
   if (me.mustSetPin) {
     return /*#__PURE__*/React.createElement(SetPinGate, {
       me: me,
@@ -835,7 +866,7 @@ function App() {
     flash,
     reload: () => load(true)
   };
-  const NAV = [["stock", "庫存總覽", "▤"], ["orders", "訂單", "▦"], ["ops", "撥調", "⇄"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
+  const NAV = [["orders", "訂單", "▦"], ["stock", "庫存總覽", "▤"], ["ops", "撥調", "⇄"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
   const TITLE = {
     stock: "庫存總覽",
     orders: "訂單",
@@ -903,7 +934,32 @@ function App() {
     onClick: () => setPage(id)
   }, /*#__PURE__*/React.createElement("span", {
     className: "ic"
-  }, ic), label === "庫存總覽" ? "庫存" : label))), toast && /*#__PURE__*/React.createElement("div", {
+  }, ic), label === "庫存總覽" ? "庫存" : label))), showNotice && /*#__PURE__*/React.createElement("div", {
+    className: "askmask"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "askbox notice"
+  }, /*#__PURE__*/React.createElement("b", null, "接下來 ", LOW_DAYS, " 天有 ", low.length, " 項低於安全庫存"), /*#__PURE__*/React.createElement("table", {
+    className: "lowtab"
+  }, /*#__PURE__*/React.createElement("tbody", null, low.map((x, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, x.item.name), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tag " + (x.loc === "factory" ? "f" : "s")
+  }, LOC_NAME[x.loc])), /*#__PURE__*/React.createElement("td", {
+    className: "l faint"
+  }, mdOf(x.date)), /*#__PURE__*/React.createElement("td", {
+    className: x.qty < 0 ? "neg" : ""
+  }, fmt(x.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "faint"
+  }, "／", fmt(x.min)))))), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    onClick: closeNotice
+  }, "知道了"), /*#__PURE__*/React.createElement("p", {
+    className: "nfoot"
+  }, "今天不會再跳，明天第一次登入才會再提醒。"))), toast && /*#__PURE__*/React.createElement("div", {
     className: "toast"
   }, toast));
 }
@@ -1026,7 +1082,11 @@ function LoginScreen({
       password: pw
     });
     setBusy(false);
-    if (r.error) flash("密碼不對");
+    if (r.error) {
+      const m = r.error && r.error.message || "";
+      console.error("登入失敗", r.error);
+      if (m.indexOf("Invalid login") !== -1) flash("密碼不對");else if (m.indexOf("not confirmed") !== -1) flash("這個帳號還沒被確認，請管理者處理");else flash("登入失敗：" + m);
+    }
   };
   const groups = [{
     label: "管理者",
@@ -1165,8 +1225,6 @@ function StockPage({
     rows: buildMonth(db, it.id, y, m)
   })), [db, y, m]);
   const days = grid.length ? grid[0].rows : buildMonth(db, "none", y, m);
-  const short = useMemo(() => shortageScan(db, y, m), [db, y, m]);
-  const shortCount = short.length;
   const locsOf = () => view === "all" ? ["factory", "store"] : [view];
   const keyOf = (itemId, loc, date) => itemId + "|" + loc + "|" + date;
   const writeEntry = async (itemId, loc, date, qty, type, note) => {
@@ -1280,11 +1338,7 @@ function StockPage({
   }, label)), /*#__PURE__*/React.createElement("button", {
     className: "pill-ghost",
     onClick: reload
-  }, "重新整理")), shortCount > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "alertbox"
-  }, /*#__PURE__*/React.createElement("b", null, "本月有 ", shortCount, " 項會不夠"), /*#__PURE__*/React.createElement("ul", null, short.map((s, i) => /*#__PURE__*/React.createElement("li", {
-    key: i
-  }, mdOf(s.date), "\u3000", LOC_NAME[s.loc], "\u3000", s.item.name, "\u3000", fmt(s.qty), " ", s.item.unit)))), /*#__PURE__*/React.createElement("section", {
+  }, "重新整理")), /*#__PURE__*/React.createElement("section", {
     className: "card full"
   }, /*#__PURE__*/React.createElement("header", {
     className: "chead",
@@ -1827,6 +1881,41 @@ function SettingsPage(ctx) {
     onClick: () => setTab("users")
   }, "帳號")), tab === "items" ? /*#__PURE__*/React.createElement(ItemsPanel, ctx) : /*#__PURE__*/React.createElement(UsersPanel, ctx));
 }
+function MinBox({
+  item,
+  field,
+  value,
+  run,
+  logIt
+}) {
+  const [v, setV] = useState(String(value || 0));
+  useEffect(() => {
+    setV(String(value || 0));
+  }, [value]);
+  const save = async () => {
+    const n = Math.max(0, Math.floor(Number(v) || 0));
+    if (n === (value || 0)) {
+      setV(String(value || 0));
+      return;
+    }
+    const patch = {};
+    patch[field] = n;
+    await run(async () => {
+      const r = await sb.from("items").update(patch).eq("id", item.id);
+      if (r.error) throw r.error;
+      await logIt("設定安全庫存", item.name + "　" + (field === "min_factory" ? "工廠" : "門市") + "　" + (value || 0) + " → " + n);
+    }, "已更新安全量");
+  };
+  return /*#__PURE__*/React.createElement("input", {
+    className: "minbox",
+    type: "text",
+    inputMode: "numeric",
+    value: v,
+    onChange: e => setV(e.target.value),
+    onBlur: save,
+    onKeyDown: e => e.key === "Enter" && e.currentTarget.blur()
+  });
+}
 function ItemsPanel({
   db,
   run,
@@ -1884,7 +1973,7 @@ function ItemsPanel({
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "lede"
-  }, "單位一律用包。已經用過的品項不能刪除，改成停用就好，歷史紀錄還要靠它。"), /*#__PURE__*/React.createElement("div", {
+  }, "單位一律用包。安全量填 0 代表不管它，填了之後 ", LOW_DAYS, " 天內跌破會在登入時提醒。 已經用過的品項不能刪除，改成停用就好。"), /*#__PURE__*/React.createElement("div", {
     className: "card pad",
     style: {
       marginBottom: 12
@@ -1912,7 +2001,7 @@ function ItemsPanel({
     className: "card"
   }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     className: "l"
-  }, "品項"), /*#__PURE__*/React.createElement("th", null, "工廠"), /*#__PURE__*/React.createElement("th", null, "門市"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, db.items.map(it => /*#__PURE__*/React.createElement("tr", {
+  }, "品項"), /*#__PURE__*/React.createElement("th", null, "工廠"), /*#__PURE__*/React.createElement("th", null, "安全量"), /*#__PURE__*/React.createElement("th", null, "門市"), /*#__PURE__*/React.createElement("th", null, "安全量"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, db.items.map(it => /*#__PURE__*/React.createElement("tr", {
     key: it.id
   }, /*#__PURE__*/React.createElement("td", {
     className: "l"
@@ -1920,9 +2009,21 @@ function ItemsPanel({
     className: "sub"
   }, it.active ? it.unit : "已停用")), /*#__PURE__*/React.createElement("td", {
     className: "big f"
-  }, fmt(currentQty(db, it.id, "factory"))), /*#__PURE__*/React.createElement("td", {
+  }, fmt(currentQty(db, it.id, "factory"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(MinBox, {
+    item: it,
+    field: "min_factory",
+    value: it.minFactory,
+    run: run,
+    logIt: logIt
+  })), /*#__PURE__*/React.createElement("td", {
     className: "big s"
-  }, fmt(currentQty(db, it.id, "store"))), /*#__PURE__*/React.createElement("td", {
+  }, fmt(currentQty(db, it.id, "store"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(MinBox, {
+    item: it,
+    field: "min_store",
+    value: it.minStore,
+    run: run,
+    logIt: logIt
+  })), /*#__PURE__*/React.createElement("td", {
     className: "oacts"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
