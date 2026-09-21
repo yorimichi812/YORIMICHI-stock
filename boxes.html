@@ -1,0 +1,1210 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>禮盒撥調</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF0EA; --surface:#FFFFFF; --side:#F7F8F4;
+  --ink:#1D2A26; --muted:#66736E; --line:#D9DED6; --line-strong:#BFC7BD;
+  --teal:#1F5E5B; --teal-dark:#174B49; --teal-soft:#DCEAE6;
+  --red:#A8323F; --red-soft:#F6E3E4;
+  --amber:#7D5A10; --amber-soft:#F5ECD4;
+  --radius-lg:14px; --radius:8px; --radius-sm:6px;
+  --font:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--font);color:var(--ink);background:var(--bg);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+h1,h2,h3{font-weight:700}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--radius);border:1px solid transparent;background:none;cursor:pointer;font-weight:500;white-space:nowrap}
+.btn.primary{background:var(--teal);color:#fff}
+.btn.primary:hover:not(:disabled){background:var(--teal-dark)}
+.btn.ghost{border-color:var(--line-strong);background:var(--surface)}
+.btn.ghost:hover:not(:disabled){border-color:var(--ink)}
+.btn.danger{background:var(--red);color:#fff}
+.btn.danger-text{color:var(--red)}
+.btn.link{height:auto;padding:2px 4px;color:var(--teal);text-decoration:underline;text-underline-offset:3px}
+.btn.small{height:30px;padding:0 10px;font-size:13px}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+input[type=text],input[type=password],input[type=number],input[type=date],select{
+  height:38px;border:1px solid var(--line-strong);border-radius:var(--radius);background:#fff;padding:0 10px;width:100%}
+input:focus,select:focus{border-color:var(--teal);outline:none;box-shadow:0 0 0 3px var(--teal-soft)}
+label.lbl{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+.muted{color:var(--muted)}
+
+/* 進入畫面 */
+.gate{min-height:100%;display:grid;place-items:center;padding:24px}
+.gate-card{width:min(440px,100%);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:32px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+.gate .brand{margin-bottom:28px}
+.brand-mark{flex:none;width:20px;height:20px;border-radius:4px;background:
+  linear-gradient(var(--red),var(--red)) center/4px 100% no-repeat,
+  linear-gradient(var(--red),var(--red)) center/100% 4px no-repeat,var(--teal)}
+.gate h2{margin:0 0 4px;font-size:20px}
+.field-error{min-height:20px;margin:6px 0 12px;color:var(--red);font-size:13px}
+.pick-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin:18px 0 20px}
+.pick-list button{height:48px;border:1px solid var(--line-strong);border-radius:var(--radius);background:#fff;cursor:pointer;font-weight:500;overflow:hidden;text-overflow:ellipsis;padding:0 8px}
+.pick-list button:hover{border-color:var(--teal);background:var(--teal-soft)}
+.first-form{margin:18px 0 12px}
+.first-form .inline-form{margin-top:6px}
+
+/* 主畫面 */
+.app{display:grid;grid-template-columns:256px 1fr;min-height:100%}
+.side{background:var(--side);border-right:1px solid var(--line);padding:20px 12px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:auto}
+.side .brand{padding:0 10px;margin-bottom:18px}
+.side-h{font-size:13px;color:var(--muted);font-weight:500;margin:18px 10px 6px}
+.nav-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:var(--radius);border:0;background:none;cursor:pointer}
+.nav-item:hover{background:#E9ECE5}
+.nav-item.on{background:var(--teal);color:#fff}
+.nav-item.on .nav-meta{color:#CFE3DE}
+.nav-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.side-empty{font-size:13px;color:var(--muted);margin:2px 10px}
+.side-add{margin:10px 10px 0;justify-content:flex-start;padding:0 10px}
+.side-bottom{margin-top:auto;padding-top:14px;border-top:1px solid var(--line)}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 36px;border-bottom:1px solid var(--line);background:var(--bg);position:sticky;top:0;z-index:5}
+.sync{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.sync .dot{width:8px;height:8px;border-radius:50%;background:#3E9B6E}
+.sync.bad{color:var(--red)}
+.sync.bad .dot{background:var(--red)}
+.who{font-size:14px;display:flex;align-items:center;gap:6px}
+.content{padding:28px 36px 72px;max-width:1320px;width:100%}
+
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:22px;flex-wrap:wrap}
+.page-head h1{font-size:28px;line-height:1.3;margin:0}
+.page-sub{margin:6px 0 0;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.page-sub b{color:var(--ink);font-variant-numeric:tabular-nums}
+.page-actions{display:flex;gap:8px;flex-wrap:wrap}
+.status{font-size:12px;padding:2px 9px;border-radius:999px;font-weight:500}
+.status.active{background:var(--teal-soft);color:var(--teal)}
+.status.ended{background:var(--amber-soft);color:var(--amber)}
+.notice{background:var(--amber-soft);color:#5A410C;border-radius:var(--radius);padding:10px 14px;margin-bottom:16px}
+
+.product{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:20px 22px 22px;margin-bottom:16px}
+.product-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.product-head h2{font-size:20px;margin:0}
+.product-total{color:var(--muted)}
+.product-total b{font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:3px}
+.product-actions{margin-left:auto;display:flex;gap:8px;align-items:center;align-self:center}
+.product-actions .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+
+.ribbon{display:flex;height:36px;border-radius:var(--radius-sm);overflow:hidden;gap:2px;background:#F1F3EF}
+.seg{min-width:4px;background:var(--c);color:#fff;display:flex;align-items:center;padding:0 10px;font-size:13px;font-weight:500;overflow:hidden;white-space:nowrap;transition:flex-grow .45s ease}
+.seg span{overflow:hidden;text-overflow:ellipsis}
+.seg.reserve{background:repeating-linear-gradient(135deg,#CFD6CB 0 6px,#E3E7E0 6px 12px);color:var(--ink)}
+.ribbon.empty{align-items:center;padding:0 14px;font-size:13px;color:var(--muted);background:repeating-linear-gradient(135deg,#F0F2EE 0 6px,#F8F9F6 6px 12px)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:10px;margin-top:14px}
+.tile{border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px 8px 16px;position:relative;background:#fff;min-width:0}
+.tile::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 3px 3px 0;background:var(--c)}
+.tile.reserve{background:#F6F7F3}
+.tile.reserve::before{background:repeating-linear-gradient(180deg,#8E9A8A 0 3px,transparent 3px 6px)}
+.tile-name{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-qty{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2;margin-top:2px}
+.tile-qty small{font-size:13px;font-weight:400;color:var(--muted);margin-left:4px}
+.tile-foot{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px;font-size:12px;color:var(--muted);min-height:26px}
+.tile-ops{display:flex;gap:2px}
+.tile-ops button{border:0;background:none;color:var(--muted);font-size:12px;padding:3px 7px;border-radius:4px;cursor:pointer}
+.tile-ops button:hover{color:var(--ink);background:#EEF0EB}
+.tile-ops button.del:hover{color:var(--red);background:var(--red-soft)}
+button.tile.add{border:1px dashed var(--line-strong);color:var(--muted);cursor:pointer;display:grid;place-items:center;min-height:100px;background:none;font-weight:500}
+button.tile.add::before{display:none}
+button.tile.add:hover{color:var(--teal);border-color:var(--teal)}
+.add-product{width:100%;height:58px;border:1px dashed var(--line-strong);border-radius:var(--radius-lg);background:none;color:var(--muted);cursor:pointer;font-weight:500}
+.add-product:hover{color:var(--teal);border-color:var(--teal)}
+
+.empty{max-width:520px;padding:64px 0}
+.empty h1{font-size:26px;margin:0 0 8px}
+.empty p{color:var(--muted);margin:0 0 20px}
+
+/* 紀錄 */
+.filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+.filters .f{width:170px}
+.filters .f.wide{width:260px}
+.filters .hint{color:var(--red);font-size:13px;align-self:center}
+.table-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:500;color:var(--muted);font-size:13px;padding:10px 12px;border-bottom:1px solid var(--line);background:#FAFBF8;white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid #EDF0EA;vertical-align:top}
+tbody tr:last-child td{border-bottom:0}
+.c-id,.c-time{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
+.c-who,.c-camp{white-space:nowrap}
+.c-op{text-align:right;white-space:nowrap}
+.act{display:inline-block;font-size:12px;padding:1px 9px;border-radius:999px;background:#EEF0EB;white-space:nowrap}
+.act.transfer{background:var(--teal-soft);color:var(--teal)}
+.act.total_adjust{background:var(--amber-soft);color:var(--amber)}
+.act.entry_delete{background:var(--red-soft);color:var(--red)}
+tr.is-deleted .desc{text-decoration:line-through;color:var(--muted)}
+.del-note{font-size:12px;color:var(--red);margin-top:2px}
+.table-empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.more{display:flex;justify-content:center;padding:14px}
+
+/* 設定 */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:20px 22px;margin-bottom:16px;max-width:620px}
+.panel h2{font-size:18px;margin:0 0 4px}
+.panel p{margin:0 0 14px}
+.inline-form{display:flex;gap:8px}
+.people{list-style:none;margin:16px 0 0;padding:0}
+.people li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid #EDF0EA}
+.people .me{font-size:12px;color:var(--teal);margin-left:8px}
+.form-ok{color:var(--teal);font-size:13px;min-height:20px;margin:8px 0 0}
+.form-err{color:var(--red);font-size:13px;min-height:20px;margin:8px 0 0}
+
+/* 對話框 */
+.overlay{position:fixed;inset:0;background:rgba(29,42,38,.4);display:grid;place-items:center;padding:24px;z-index:50}
+.modal{background:#fff;border-radius:var(--radius-lg);width:min(480px,100%);padding:22px 24px 20px;box-shadow:0 24px 60px rgba(29,42,38,.28)}
+.modal h3{margin:0 0 14px;font-size:18px}
+.modal.alert h3{color:var(--red)}
+.modal-body p{margin:0 0 10px}
+.modal-error{color:var(--red);font-size:13px;margin:6px 0 0;min-height:0}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.field{margin-bottom:14px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.preview{background:#F4F6F1;border-radius:var(--radius);padding:10px 12px;font-size:14px;font-variant-numeric:tabular-nums}
+.preview.warn{background:var(--red-soft);color:var(--red)}
+.toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius);overflow:hidden}
+.toggle label{margin:0;cursor:pointer}
+.toggle input{position:absolute;opacity:0;pointer-events:none}
+.toggle span{display:block;padding:7px 18px;font-size:14px}
+.toggle input:checked + span{background:var(--teal);color:#fff}
+.toggle input:focus-visible + span{outline:2px solid var(--teal);outline-offset:-4px}
+
+@media (max-width:880px){
+  .app{grid-template-columns:1fr}
+  .side{position:static;height:auto}
+  .topbar,.content{padding-left:16px;padding-right:16px}
+  .row2{grid-template-columns:1fr}
+  .product-actions{margin-left:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+
+<section id="gate" class="gate">
+  <div class="gate-card">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>禮盒撥調</div>
+
+    <form id="code-form" autocomplete="off">
+      <label class="lbl" for="code-input">通關密碼</label>
+      <input id="code-input" type="password" inputmode="numeric" autocomplete="off">
+      <p class="field-error" id="code-error" role="alert"></p>
+      <button class="btn primary wide" type="submit" id="code-btn">進入</button>
+    </form>
+
+    <div id="pick" hidden>
+      <h2>你是誰？</h2>
+      <p class="muted" id="pick-msg">選擇你的名字，接下來的操作都會記在你名下。</p>
+      <div id="pick-list" class="pick-list"></div>
+      <form id="first-form" class="first-form" hidden>
+        <label class="lbl" for="first-name">名單還是空的，先輸入你的名字</label>
+        <div class="inline-form">
+          <input id="first-name" type="text" maxlength="40">
+          <button class="btn primary" type="submit">加入並進入</button>
+        </div>
+        <p class="field-error" id="first-error" role="alert"></p>
+      </form>
+      <button class="btn link" id="pick-back" type="button">重新輸入通關密碼</button>
+    </div>
+  </div>
+</section>
+
+<div id="app" class="app" hidden>
+  <aside class="side">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>禮盒撥調</div>
+    <div class="side-h">進行中的活動</div>
+    <div id="side-active"></div>
+    <div id="side-ended-wrap">
+      <div class="side-h">已結束</div>
+      <div id="side-ended"></div>
+    </div>
+    <button class="btn link side-add" data-a="add-campaign" type="button">新增活動</button>
+    <div class="side-bottom">
+      <button class="nav-item" data-nav="logs" type="button"><span class="nav-name">操作紀錄</span></button>
+      <button class="nav-item" data-nav="settings" type="button"><span class="nav-name">人員與通關密碼</span></button>
+    </div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="sync" id="sync" aria-live="polite"><span class="dot"></span><span id="sync-text">連線中</span></div>
+      <div class="who">目前操作：<strong id="who-name"></strong>
+        <button class="btn link" data-a="switch-person" type="button">換人</button>
+        <button class="btn link" data-a="leave" type="button">離開</button>
+      </div>
+    </div>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+/* =================== 設定：換成新 Supabase 專案的值 =================== */
+const SUPABASE_URL = "https://Project URL.supabase.co";
+const SUPABASE_KEY = "sb_publishable_D5FYwJ8Usurz485CktSB8w_Ew6Zfm08";
+/* ===================================================================== */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+});
+
+const PALETTE = ["#1F5E5B", "#C07A2C", "#6F5496", "#2F74AE", "#B0506F", "#5E7F2E", "#9A4E2C", "#3F6570"];
+const LOG_PAGE = 200;
+const POLL_MS = 15000;
+
+const S = {
+  code: null, me: null,
+  people: [], campaigns: [], stateJson: "",
+  view: { type: "campaign", id: null },
+  logs: { filters: { campaign: "", from: "", to: "" }, rows: [], campaigns: [], done: true, seq: 0 },
+  channel: null, timer: null, syncOk: true, lastSync: null
+};
+
+class Handled extends Error {}
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => Number(n || 0).toLocaleString("zh-TW");
+const sumQty = p => p.targets.reduce((a, t) => a + t.qty, 0);
+const campaignTotal = c => c.products.reduce((a, p) => a + sumQty(p), 0);
+const timeFmt = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const clockFmt = new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const fmtTime = iso => iso ? timeFmt.format(new Date(iso)) : "";
+
+function friendly(msg) {
+  if (!msg) return "發生未知的錯誤，請再試一次。";
+  if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) return "連不上資料庫，請檢查網路後再試一次。";
+  if (/duplicate key/i.test(msg)) return "名稱重複了，請換一個名稱。";
+  if (/violates check constraint/i.test(msg)) return "盒數不能小於 0，這次操作沒有完成。";
+  return msg;
+}
+
+/* ---------------- 資料庫呼叫 ---------------- */
+async function rpc(fn, args = {}) {
+  let res;
+  try {
+    res = await sb.rpc(fn, { p_code: S.code, ...args });
+  } catch (e) {
+    throw new Error(friendly(e.message));
+  }
+  const { data, error } = res;
+  if (error) {
+    const msg = error.message || "";
+    if (msg.includes("PASSCODE_INVALID")) { showGate("通關密碼已變更，請重新輸入。"); throw new Handled(); }
+    if (msg.includes("PERSON_INVALID")) { backToPick("你的名字已經從名單刪除，請重新選擇。"); throw new Handled(); }
+    throw new Error(friendly(msg));
+  }
+  return data;
+}
+
+async function run(fn, args) {
+  try {
+    const data = await rpc(fn, { p_actor: S.me.id, ...args });
+    notifyOthers();
+    await refresh();
+    return { ok: true, data };
+  } catch (e) {
+    if (e instanceof Handled) return { ok: false, handled: true };
+    return { ok: false, msg: e.message };
+  }
+}
+
+async function act(fn, args, alertTitle) {
+  const r = await run(fn, args);
+  if (!r.ok && r.msg) await alertBox(r.msg, alertTitle);
+  return r;
+}
+
+/* ---------------- 即時同步 ---------------- */
+function startSync() {
+  stopSync();
+  S.channel = sb.channel("box-allocation-sync", { config: { broadcast: { self: false } } })
+    .on("broadcast", { event: "changed" }, () => scheduleRefresh())
+    .subscribe();
+  S.timer = setInterval(() => refresh(), POLL_MS);
+}
+function stopSync() {
+  if (S.timer) clearInterval(S.timer);
+  S.timer = null;
+  if (S.channel) sb.removeChannel(S.channel);
+  S.channel = null;
+}
+function notifyOthers() {
+  try { S.channel && S.channel.send({ type: "broadcast", event: "changed", payload: { t: Date.now() } }); } catch (e) {}
+}
+let refreshTimer = null;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => refresh(), 250);
+}
+
+let chain = Promise.resolve();
+let queued = 0;
+function refresh() {
+  if (queued > 0) return chain;
+  queued++;
+  chain = chain.then(async () => {
+    queued--;
+    if (!S.me) return;
+    try {
+      await loadState();
+      if (S.view.type === "logs") await loadLogs(true, S.logs.rows.length);
+      S.syncOk = true;
+      S.lastSync = new Date();
+    } catch (e) {
+      if (!(e instanceof Handled)) S.syncOk = false;
+    }
+    renderSync();
+  });
+  return chain;
+}
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.me) refresh(); });
+
+function renderSync() {
+  const el = $("#sync");
+  el.classList.toggle("bad", !S.syncOk);
+  $("#sync-text").textContent = S.syncOk
+    ? (S.lastSync ? `即時同步中，${clockFmt.format(S.lastSync)} 更新` : "連線中")
+    : "連線中斷，稍後自動重試";
+}
+
+/* ---------------- 進入流程 ---------------- */
+function showGate(msg) {
+  stopSync();
+  closeAllModals();
+  S.code = null; S.me = null; S.stateJson = "";
+  $("#app").hidden = true;
+  $("#gate").hidden = false;
+  $("#code-form").hidden = false;
+  $("#pick").hidden = true;
+  $("#code-input").value = "";
+  $("#code-error").textContent = msg || "";
+  setTimeout(() => $("#code-input").focus(), 0);
+}
+
+$("#code-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const code = $("#code-input").value.trim();
+  const err = $("#code-error");
+  if (!code) { err.textContent = "請輸入通關密碼。"; return; }
+  const btn = $("#code-btn");
+  btn.disabled = true; err.textContent = "";
+  try {
+    const { data, error } = await sb.rpc("bx_enter", { p_code: code });
+    if (error) {
+      err.textContent = (error.message || "").includes("PASSCODE_INVALID") ? "通關密碼不正確。" : friendly(error.message);
+      return;
+    }
+    S.code = code;
+    showPick(data);
+  } catch (ex) {
+    err.textContent = friendly(ex.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function showPick(people, msg) {
+  $("#code-form").hidden = true;
+  $("#pick").hidden = false;
+  $("#pick-msg").textContent = msg || "選擇你的名字，接下來的操作都會記在你名下。";
+  const list = $("#pick-list");
+  list.innerHTML = people.map(p => `<button type="button" data-pick="${p.id}" title="${esc(p.name)}">${esc(p.name)}</button>`).join("");
+  list.hidden = people.length === 0;
+  $("#first-form").hidden = people.length > 0;
+  $("#first-error").textContent = "";
+  list.onclick = ev => {
+    const b = ev.target.closest("[data-pick]");
+    if (!b) return;
+    const p = people.find(x => String(x.id) === b.dataset.pick);
+    if (p) enterApp(p);
+  };
+  setTimeout(() => (people.length ? list.querySelector("button") : $("#first-name")).focus(), 0);
+}
+
+$("#first-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("#first-name").value.trim();
+  const err = $("#first-error");
+  if (!name) { err.textContent = "請輸入名字。"; return; }
+  try {
+    const id = await rpc("bx_person_add", { p_actor: null, p_name: name });
+    enterApp({ id, name });
+  } catch (ex) {
+    if (!(ex instanceof Handled)) err.textContent = ex.message;
+  }
+});
+
+$("#pick-back").addEventListener("click", () => showGate());
+
+async function backToPick(msg) {
+  stopSync();
+  closeAllModals();
+  S.me = null; S.stateJson = "";
+  $("#app").hidden = true;
+  $("#gate").hidden = false;
+  try {
+    const people = await rpc("bx_enter");
+    showPick(people, msg);
+  } catch (e) { /* 通關密碼失效時 rpc 已經導回輸入畫面 */ }
+}
+
+function enterApp(person) {
+  S.me = person;
+  S.stateJson = "";
+  S.view = { type: "campaign", id: null };
+  S.logs = { filters: { campaign: "", from: "", to: "" }, rows: [], campaigns: [], done: true, seq: 0 };
+  $("#gate").hidden = true;
+  $("#app").hidden = false;
+  $("#who-name").textContent = person.name;
+  $("#content").innerHTML = "";
+  $("#content").dataset.view = "";
+  S.syncOk = true; S.lastSync = null; renderSync();
+  startSync();
+  refresh();
+}
+
+/* ---------------- 狀態與畫面 ---------------- */
+async function loadState() {
+  const data = await rpc("bx_state", { p_actor: S.me.id });
+  const json = JSON.stringify(data);
+  if (json === S.stateJson) return;
+  S.stateJson = json;
+  S.people = data.people;
+  S.campaigns = data.campaigns;
+  const me = S.people.find(p => p.id === S.me.id);
+  if (me && me.name !== S.me.name) { S.me.name = me.name; $("#who-name").textContent = me.name; }
+  render();
+}
+
+function currentCampaign() {
+  if (S.view.type !== "campaign") return null;
+  let c = S.campaigns.find(x => x.id === S.view.id);
+  if (!c) {
+    c = S.campaigns.find(x => x.status === "active") || S.campaigns[0] || null;
+    S.view = { type: "campaign", id: c ? c.id : null };
+  }
+  return c;
+}
+
+function findProduct(id) {
+  for (const c of S.campaigns) for (const p of c.products) if (p.id === id) return { c, p };
+  return {};
+}
+function findTarget(id) {
+  for (const c of S.campaigns) for (const p of c.products) for (const t of p.targets) if (t.id === id) return { c, p, t };
+  return {};
+}
+
+function render() {
+  const c = currentCampaign();
+  renderSidebar();
+  const content = $("#content");
+  if (S.view.type === "campaign") {
+    content.innerHTML = c ? renderCampaign(c) : renderNoCampaign();
+    content.dataset.view = "campaign";
+  } else if (S.view.type === "logs") {
+    if (content.dataset.view !== "logs") { content.innerHTML = renderLogsShell(); content.dataset.view = "logs"; }
+    renderLogsBody();
+  } else if (S.view.type === "settings") {
+    if (content.dataset.view !== "settings") { content.innerHTML = renderSettingsShell(); content.dataset.view = "settings"; }
+    renderPeople();
+  }
+}
+
+function renderSidebar() {
+  const item = c => `<button type="button" class="nav-item ${S.view.type === "campaign" && S.view.id === c.id ? "on" : ""}" data-nav="campaign" data-id="${c.id}">
+      <span class="nav-name">${esc(c.name)}</span><span class="nav-meta">${fmt(campaignTotal(c))} 盒</span></button>`;
+  const active = S.campaigns.filter(c => c.status === "active");
+  const ended = S.campaigns.filter(c => c.status === "ended");
+  $("#side-active").innerHTML = active.length ? active.map(item).join("") : `<p class="side-empty">目前沒有進行中的活動</p>`;
+  $("#side-ended-wrap").hidden = ended.length === 0;
+  $("#side-ended").innerHTML = ended.map(item).join("");
+  document.querySelectorAll('.side-bottom [data-nav]').forEach(b => b.classList.toggle("on", b.dataset.nav === S.view.type));
+}
+
+function renderNoCampaign() {
+  return `<div class="empty">
+    <h1>還沒有活動</h1>
+    <p>建立一個活動，加入要賣的禮盒款式和總數，再分配給門市、客服等通路。</p>
+    <button class="btn primary" type="button" data-a="add-campaign">新增活動</button>
+  </div>`;
+}
+
+function renderCampaign(c) {
+  const locked = c.status === "ended";
+  return `
+  <header class="page-head">
+    <div>
+      <h1>${esc(c.name)}</h1>
+      <p class="page-sub"><span>${c.products.length} 款禮盒，總數 <b>${fmt(campaignTotal(c))}</b> 盒</span>
+        <span class="status ${locked ? "ended" : "active"}">${locked ? "已結束" : "進行中"}</span></p>
+    </div>
+    <div class="page-actions">
+      ${locked
+        ? `<button class="btn primary" type="button" data-a="reopen-campaign">解除鎖定</button>`
+        : `<button class="btn ghost" type="button" data-a="rename-campaign">活動改名</button>
+           <button class="btn ghost" type="button" data-a="end-campaign">標記結束</button>
+           <button class="btn ghost danger-text" type="button" data-a="delete-campaign">刪除活動</button>`}
+    </div>
+  </header>
+  ${locked ? `<div class="notice">這個活動已結束，只能查看。要修改請按「解除鎖定」。</div>` : ""}
+  ${c.products.map(p => renderProduct(p, locked)).join("")}
+  ${locked ? "" : `<button class="add-product" type="button" data-a="add-product">新增禮盒款式</button>`}
+  ${c.products.length === 0 && locked ? `<p class="muted">這個活動沒有任何禮盒款式。</p>` : ""}`;
+}
+
+function renderProduct(p, locked) {
+  const total = sumQty(p);
+  const others = p.targets.filter(t => !t.is_reserve);
+  const colorOf = t => PALETTE[others.indexOf(t) % PALETTE.length];
+  const pct = q => total > 0 ? Math.round(q / total * 1000) / 10 : 0;
+
+  const segs = p.targets.filter(t => t.qty > 0).map(t => {
+    const share = t.qty / total;
+    return `<div class="seg ${t.is_reserve ? "reserve" : ""}" style="flex:${t.qty} 1 0;${t.is_reserve ? "" : `--c:${colorOf(t)}`}" title="${esc(t.name)}：${fmt(t.qty)} 盒">${share >= 0.09 ? `<span>${esc(t.name)}</span>` : ""}</div>`;
+  }).join("");
+  const ribbon = total > 0
+    ? `<div class="ribbon" role="img" aria-label="${esc(p.targets.map(t => `${t.name} ${t.qty} 盒`).join("，"))}">${segs}</div>`
+    : `<div class="ribbon empty">總數是 0，按「調整總數」設定這款要賣幾盒</div>`;
+
+  const tiles = p.targets.map(t => `
+    <div class="tile ${t.is_reserve ? "reserve" : ""}" style="${t.is_reserve ? "" : `--c:${colorOf(t)}`}">
+      <div class="tile-name" title="${esc(t.name)}">${esc(t.name)}</div>
+      <div class="tile-qty">${fmt(t.qty)}<small>盒</small></div>
+      <div class="tile-foot">
+        <span>${pct(t.qty)}%</span>
+        ${!t.is_reserve && !locked ? `<span class="tile-ops">
+          <button type="button" data-a="rename-target" data-id="${t.id}">改名</button>
+          <button type="button" class="del" data-a="delete-target" data-id="${t.id}">刪除</button>
+        </span>` : ""}
+      </div>
+    </div>`).join("");
+
+  return `
+  <section class="product" aria-label="${esc(p.name)}">
+    <div class="product-head">
+      <h2>${esc(p.name)}</h2>
+      <div class="product-total">總數 <b>${fmt(total)}</b>盒</div>
+      ${locked ? "" : `<div class="product-actions">
+        <button class="btn primary" type="button" data-a="transfer" data-id="${p.id}">撥調</button>
+        <button class="btn ghost" type="button" data-a="adjust" data-id="${p.id}">調整總數</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn small link" type="button" data-a="rename-product" data-id="${p.id}">改名</button>
+        <button class="btn small link danger-text" type="button" data-a="delete-product" data-id="${p.id}">刪除款式</button>
+      </div>`}
+    </div>
+    ${ribbon}
+    <div class="tiles">
+      ${tiles}
+      ${locked ? "" : `<button class="tile add" type="button" data-a="add-target" data-id="${p.id}">新增分配對象</button>`}
+    </div>
+  </section>`;
+}
+
+/* ---------------- 對話框 ---------------- */
+const openModals = new Set();
+
+function modal({ title, body = "", confirmText = "確定", cancelText = "取消", danger = false, hideCancel = false, tone = "", onConfirm, onOpen }) {
+  return new Promise(resolve => {
+    const lastFocus = document.activeElement;
+    const wrap = document.createElement("div");
+    wrap.className = "overlay";
+    wrap.innerHTML = `
+      <div class="modal ${tone}" role="dialog" aria-modal="true">
+        <h3>${esc(title)}</h3>
+        <div class="modal-body">${body}</div>
+        <p class="modal-error" role="alert"></p>
+        <div class="modal-actions">
+          ${hideCancel ? "" : `<button type="button" class="btn ghost" data-x>${esc(cancelText)}</button>`}
+          <button type="button" class="btn ${danger ? "danger" : "primary"}" data-ok>${esc(confirmText)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const okBtn = $("[data-ok]", wrap);
+    const errEl = $(".modal-error", wrap);
+    const setErr = m => { errEl.textContent = m || ""; };
+    let busy = false;
+
+    const close = v => {
+      if (!openModals.has(close)) return;
+      openModals.delete(close);
+      wrap.remove();
+      if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+      resolve(v);
+    };
+    openModals.add(close);
+
+    const doOk = async () => {
+      if (busy) return;
+      if (!onConfirm) return close(true);
+      busy = true; okBtn.disabled = true; setErr("");
+      try {
+        const r = await onConfirm({ root: wrap, setErr });
+        if (r !== false) close(r === undefined ? true : r);
+      } finally {
+        busy = false;
+        if (wrap.isConnected) okBtn.disabled = false;
+      }
+    };
+
+    okBtn.addEventListener("click", doOk);
+    const x = $("[data-x]", wrap);
+    if (x) x.addEventListener("click", () => close(null));
+    wrap.addEventListener("mousedown", e => { if (e.target === wrap && !hideCancel) close(null); });
+    wrap.addEventListener("keydown", e => {
+      if (wrap !== [...document.querySelectorAll(".overlay")].pop()) return;
+      if (e.key === "Escape") { e.preventDefault(); close(hideCancel ? true : null); }
+      if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); doOk(); }
+      if (e.key === "Tab") {
+        const f = [...wrap.querySelectorAll("button:not(:disabled),input,select")];
+        if (!f.length) return;
+        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    });
+    if (onOpen) onOpen(wrap);
+    setTimeout(() => { const first = wrap.querySelector("input,select") || okBtn; first.focus(); if (first.select && first.type !== "number") first.select(); }, 0);
+  });
+}
+
+function closeAllModals() { [...openModals].forEach(close => close(null)); }
+
+function alertBox(message, title = "無法完成") {
+  return modal({ title, body: `<p>${esc(message)}</p>`, confirmText: "知道了", hideCancel: true, tone: "alert" });
+}
+function confirmBox(title, message, confirmText, danger = false) {
+  return modal({ title, body: `<p>${esc(message)}</p>`, confirmText, danger });
+}
+
+function nameModal({ title, label, value = "", confirmText, submit }) {
+  return modal({
+    title, confirmText,
+    body: `<div class="field"><label class="lbl" for="m-name">${esc(label)}</label><input id="m-name" type="text" maxlength="40" value="${esc(value)}"></div>`,
+    onConfirm: async ({ root, setErr }) => {
+      const name = $("#m-name", root).value.trim();
+      if (!name) { setErr("名稱不能是空白。"); return false; }
+      if (name === value) return true;
+      return submit(name, setErr);
+    }
+  });
+}
+
+/* ---------------- 活動操作 ---------------- */
+async function addCampaign() {
+  await nameModal({
+    title: "新增活動", label: "活動名稱", confirmText: "建立活動",
+    submit: async name => {
+      const r = await run("bx_campaign_create", { p_name: name });
+      if (!r.ok) { if (r.msg) await alertBox(r.msg); return false; }
+      S.view = { type: "campaign", id: r.data };
+      render();
+      return true;
+    }
+  });
+}
+
+async function renameCampaign(c) {
+  await nameModal({
+    title: "活動改名", label: "活動名稱", value: c.name, confirmText: "儲存名稱",
+    submit: async name => {
+      const r = await run("bx_campaign_rename", { p_campaign: c.id, p_name: name });
+      if (!r.ok) { if (r.msg) await alertBox(r.msg); return false; }
+      return true;
+    }
+  });
+}
+
+async function endCampaign(c) {
+  const ok = await confirmBox("標記結束", `「${c.name}」標記結束後會鎖定成唯讀，不能再撥調或修改。之後需要可以再解除鎖定。`, "標記結束");
+  if (ok) await act("bx_campaign_set_status", { p_campaign: c.id, p_ended: true });
+}
+
+async function reopenCampaign(c) {
+  await act("bx_campaign_set_status", { p_campaign: c.id, p_ended: false });
+}
+
+async function deleteCampaign(c) {
+  const total = campaignTotal(c);
+  if (total > 0) {
+    await alertBox(`「${c.name}」裡還有 ${fmt(total)} 盒。要先把每款禮盒的總數調整為 0，才能刪除活動。`, "無法刪除");
+    return;
+  }
+  const ok = await confirmBox("刪除活動", `確定刪除「${c.name}」？活動頁面會移除，操作紀錄仍會保留在紀錄頁。`, "刪除活動", true);
+  if (ok) await act("bx_campaign_delete", { p_campaign: c.id }, "無法刪除");
+}
+
+/* ---------------- 款式與對象 ---------------- */
+async function addProduct(c) {
+  await modal({
+    title: "新增禮盒款式", confirmText: "新增款式",
+    body: `
+      <div class="field"><label class="lbl" for="m-pname">款式名稱</label><input id="m-pname" type="text" maxlength="40"></div>
+      <div class="field"><label class="lbl" for="m-ptotal">總數（盒）</label><input id="m-ptotal" type="number" min="0" step="1" value="0" inputmode="numeric"></div>
+      <p class="muted">總數會先全部放在「預留」，之後再撥調給各通路。</p>`,
+    onConfirm: async ({ root, setErr }) => {
+      const name = $("#m-pname", root).value.trim();
+      const raw = $("#m-ptotal", root).value.trim();
+      const total = raw === "" ? 0 : Number(raw);
+      if (!name) { setErr("請輸入款式名稱。"); return false; }
+      if (!Number.isInteger(total) || total < 0) { setErr("總數要是 0 以上的整數。"); return false; }
+      const r = await run("bx_product_create", { p_campaign: c.id, p_name: name, p_total: total });
+      if (!r.ok) { if (r.msg) await alertBox(r.msg); return false; }
+    }
+  });
+}
+
+async function renameProduct(pid) {
+  const { p } = findProduct(pid); if (!p) return;
+  await nameModal({
+    title: "款式改名", label: "款式名稱", value: p.name, confirmText: "儲存名稱",
+    submit: async name => {
+      const r = await run("bx_product_rename", { p_product: p.id, p_name: name });
+      if (!r.ok) { if (r.msg) await alertBox(r.msg); return false; }
+    }
+  });
+}
+
+async function deleteProduct(pid) {
+  const { p } = findProduct(pid); if (!p) return;
+  const total = sumQty(p);
+  if (total > 0) {
+    await alertBox(`「${p.name}」還有 ${fmt(total)} 盒。要先把總數調整為 0，才能刪除這款。`, "無法刪除");
+    return;
+  }
+  const ok = await confirmBox("刪除款式", `確定刪除「${p.name}」？`, "刪除款式", true);
+  if (ok) await act("bx_product_delete", { p_product: p.id }, "無法刪除");
+}
+
+async function addTarget(pid) {
+  const { p } = findProduct(pid); if (!p) return;
+  await nameModal({
+    title: `「${p.name}」新增分配對象`, label: "對象名稱，例如門市、客服、購物網頁、KOL", confirmText: "新增對象",
+    submit: async name => {
+      if (name === "預留") { await alertBox("「預留」是系統保留的名稱，請換一個。"); return false; }
+      const r = await run("bx_target_create", { p_product: p.id, p_name: name });
+      if (!r.ok) { if (r.msg) await alertBox(r.msg); return false; }
+    }
+  });
+}
+
+async function renameTarget(tid) {
+  const { t } = findTarget(tid); if (!t) return;
+  await nameModal({
+    title: "分配對象改名", label: "對象名稱", value: t.name, confirmText: "儲存名稱",
+    submit: async name => {
+      if (name === "預留") { await alertBox("「預留」是系統保留的名稱，請換一個。"); return false; }
+      const r = await run("bx_target_rename", { p_target: t.id, p_name: name });
+      if (!r.ok) { if (r.msg) await alertBox(r.msg); return false; }
+    }
+  });
+}
+
+async function deleteTarget(tid) {
+  const { t, p } = findTarget(tid); if (!t) return;
+  if (t.qty > 0) {
+    await alertBox(`「${t.name}」手上還有 ${fmt(t.qty)} 盒，要先撥走才能刪除。`, "無法刪除");
+    return;
+  }
+  const ok = await confirmBox("刪除分配對象", `確定從「${p.name}」刪除「${t.name}」？`, "刪除對象", true);
+  if (ok) await act("bx_target_delete", { p_target: t.id }, "無法刪除");
+}
+
+/* ---------------- 撥調與調整總數 ---------------- */
+async function openTransfer(pid) {
+  const { p } = findProduct(pid); if (!p) return;
+  if (p.targets.length < 2) {
+    await alertBox(`「${p.name}」還沒有分配對象，先新增一個再撥調。`, "還不能撥調");
+    return;
+  }
+  const reserve = p.targets.find(t => t.is_reserve);
+  const firstOther = p.targets.find(t => !t.is_reserve);
+  const options = sel => p.targets.map(t => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+
+  await modal({
+    title: `撥調「${p.name}」`, confirmText: "確認撥調",
+    body: `
+      <div class="row2 field">
+        <div><label class="lbl" for="m-from">從</label><select id="m-from">${options(reserve.id)}</select></div>
+        <div><label class="lbl" for="m-to">撥給</label><select id="m-to">${options(firstOther.id)}</select></div>
+      </div>
+      <div class="field"><label class="lbl" for="m-qty">盒數</label><input id="m-qty" type="number" min="1" step="1" inputmode="numeric"></div>
+      <div class="preview" id="m-preview"></div>`,
+    onOpen: root => {
+      const update = () => {
+        const cur = findProduct(pid).p;
+        const pv = $("#m-preview", root);
+        if (!cur) { pv.textContent = "這款禮盒已被刪除。"; return; }
+        const f = cur.targets.find(t => String(t.id) === $("#m-from", root).value);
+        const to = cur.targets.find(t => String(t.id) === $("#m-to", root).value);
+        const q = Number($("#m-qty", root).value);
+        pv.classList.remove("warn");
+        if (!f || !to) { pv.textContent = "撥調對象已被刪除，請重新選擇。"; return; }
+        if (f.id === to.id) { pv.textContent = "撥出和撥入要選不同的對象。"; pv.classList.add("warn"); return; }
+        if (!Number.isInteger(q) || q <= 0) { pv.textContent = `「${f.name}」目前 ${fmt(f.qty)} 盒，「${to.name}」目前 ${fmt(to.qty)} 盒。`; return; }
+        if (q > f.qty) { pv.textContent = `「${f.name}」只有 ${fmt(f.qty)} 盒，不夠撥出 ${fmt(q)} 盒。`; pv.classList.add("warn"); return; }
+        pv.textContent = `撥調後：「${f.name}」${fmt(f.qty - q)} 盒，「${to.name}」${fmt(to.qty + q)} 盒。`;
+      };
+      root.addEventListener("input", update);
+      root.addEventListener("change", update);
+      root._update = update;
+      update();
+    },
+    onConfirm: async ({ root, setErr }) => {
+      const cur = findProduct(pid).p;
+      if (!cur) { await alertBox("這款禮盒已被刪除。"); return true; }
+      const f = cur.targets.find(t => String(t.id) === $("#m-from", root).value);
+      const to = cur.targets.find(t => String(t.id) === $("#m-to", root).value);
+      const q = Number($("#m-qty", root).value);
+      if (!f || !to) { setErr("撥調對象已被刪除，請重新選擇。"); return false; }
+      if (f.id === to.id) { setErr("撥出和撥入要選不同的對象。"); return false; }
+      if (!Number.isInteger(q) || q <= 0) { setErr("請輸入大於 0 的整數盒數。"); return false; }
+      if (q > f.qty) {
+        await alertBox(`「${f.name}」目前只有 ${fmt(f.qty)} 盒，無法撥出 ${fmt(q)} 盒。`, "盒數不足");
+        return false;
+      }
+      const r = await run("bx_transfer", { p_from: f.id, p_to: to.id, p_qty: q });
+      if (!r.ok) {
+        if (r.msg) await alertBox(r.msg, /盒/.test(r.msg) ? "盒數不足" : "無法撥調");
+        if (root.isConnected && root._update) root._update();
+        return false;
+      }
+    }
+  });
+}
+
+async function openAdjust(pid) {
+  const { p } = findProduct(pid); if (!p) return;
+  await modal({
+    title: `調整「${p.name}」總數`, confirmText: "確認調整",
+    body: `
+      <div class="field">
+        <div class="toggle" role="radiogroup" aria-label="增加或減少">
+          <label><input type="radio" name="m-dir" value="1" checked><span>增加</span></label>
+          <label><input type="radio" name="m-dir" value="-1"><span>減少</span></label>
+        </div>
+      </div>
+      <div class="field"><label class="lbl" for="m-aqty">盒數</label><input id="m-aqty" type="number" min="1" step="1" inputmode="numeric"></div>
+      <div class="preview" id="m-apreview"></div>
+      <p class="muted" style="margin-top:10px">增加或減少的盒數一律從「預留」進出。</p>`,
+    onOpen: root => {
+      const update = () => {
+        const cur = findProduct(pid).p;
+        const pv = $("#m-apreview", root);
+        if (!cur) { pv.textContent = "這款禮盒已被刪除。"; return; }
+        const res = cur.targets.find(t => t.is_reserve);
+        const total = sumQty(cur);
+        const dir = Number($('input[name="m-dir"]:checked', root).value);
+        const q = Number($("#m-aqty", root).value);
+        pv.classList.remove("warn");
+        if (!Number.isInteger(q) || q <= 0) { pv.textContent = `目前總數 ${fmt(total)} 盒，預留 ${fmt(res.qty)} 盒。`; return; }
+        if (dir < 0 && q > res.qty) { pv.textContent = `預留只有 ${fmt(res.qty)} 盒，不夠減少 ${fmt(q)} 盒。`; pv.classList.add("warn"); return; }
+        pv.textContent = `調整後：總數 ${fmt(total + dir * q)} 盒，預留 ${fmt(res.qty + dir * q)} 盒。`;
+      };
+      root.addEventListener("input", update);
+      root.addEventListener("change", update);
+      root._update = update;
+      update();
+    },
+    onConfirm: async ({ root, setErr }) => {
+      const cur = findProduct(pid).p;
+      if (!cur) { await alertBox("這款禮盒已被刪除。"); return true; }
+      const res = cur.targets.find(t => t.is_reserve);
+      const dir = Number($('input[name="m-dir"]:checked', root).value);
+      const q = Number($("#m-aqty", root).value);
+      if (!Number.isInteger(q) || q <= 0) { setErr("請輸入大於 0 的整數盒數。"); return false; }
+      if (dir < 0 && q > res.qty) {
+        await alertBox(`預留只剩 ${fmt(res.qty)} 盒，無法減少 ${fmt(q)} 盒。要減少更多，請先把其他對象的盒數撥回預留。`, "盒數不足");
+        return false;
+      }
+      const r = await run("bx_adjust_total", { p_product: cur.id, p_delta: dir * q });
+      if (!r.ok) {
+        if (r.msg) await alertBox(r.msg, /盒/.test(r.msg) ? "盒數不足" : "無法調整");
+        if (root.isConnected && root._update) root._update();
+        return false;
+      }
+    }
+  });
+}
+
+/* ---------------- 操作紀錄 ---------------- */
+const ACTION_LABEL = {
+  transfer: "撥調", total_adjust: "調整總數", entry_delete: "刪除紀錄",
+  campaign_create: "建立活動", campaign_rename: "活動改名", campaign_end: "標記結束", campaign_reopen: "解除鎖定", campaign_delete: "刪除活動",
+  product_create: "新增款式", product_rename: "款式改名", product_delete: "刪除款式",
+  target_create: "新增對象", target_rename: "對象改名", target_delete: "刪除對象",
+  person_add: "新增人員", person_delete: "刪除人員", passcode_change: "變更通關密碼"
+};
+
+function describeCore(action, r) {
+  const pn = `「${r.product_name}」`;
+  switch (action) {
+    case "transfer": return `${pn}從「${r.from_name}」撥給「${r.to_name}」${fmt(r.qty)} 盒`;
+    case "total_adjust": return `${pn}總數${r.qty > 0 ? "增加" : "減少"} ${fmt(Math.abs(r.qty))} 盒（預留${r.qty > 0 ? "加入" : "扣除"}）`;
+    default: return "";
+  }
+}
+
+function describe(r) {
+  const pn = `「${r.product_name}」`;
+  switch (r.action) {
+    case "transfer":
+    case "total_adjust": return describeCore(r.action, r);
+    case "entry_delete": return `刪除 #${r.ref_log_id}：${describeCore(r.note, r)}，盒數已退回`;
+    case "campaign_create": return `建立「${r.campaign_name}」`;
+    case "campaign_rename": return `「${r.note}」改名為「${r.campaign_name}」`;
+    case "campaign_end": return `「${r.campaign_name}」鎖定為唯讀`;
+    case "campaign_reopen": return `「${r.campaign_name}」重新開放操作`;
+    case "campaign_delete": return `刪除「${r.campaign_name}」`;
+    case "product_create": return `新增${pn}`;
+    case "product_rename": return `「${r.note}」改名為${pn}`;
+    case "product_delete": return `刪除${pn}`;
+    case "target_create": return `${pn}新增「${r.to_name}」`;
+    case "target_rename": return `${pn}的「${r.note}」改名為「${r.to_name}」`;
+    case "target_delete": return `${pn}刪除「${r.to_name}」`;
+    case "person_add": return `新增「${r.note}」`;
+    case "person_delete": return `刪除「${r.note}」`;
+    case "passcode_change": return "通關密碼已變更";
+    default: return r.action;
+  }
+}
+
+function renderLogsShell() {
+  const f = S.logs.filters;
+  return `
+  <header class="page-head"><div><h1>操作紀錄</h1><p class="page-sub">所有活動與人員的操作，時間為台灣時間。</p></div></header>
+  <div class="filters">
+    <div class="f wide"><label class="lbl" for="lf-campaign">活動</label><select id="lf-campaign"></select></div>
+    <div class="f"><label class="lbl" for="lf-from">開始日期</label><input id="lf-from" type="date" value="${esc(f.from)}"></div>
+    <div class="f"><label class="lbl" for="lf-to">結束日期</label><input id="lf-to" type="date" value="${esc(f.to)}"></div>
+    <button class="btn ghost" type="button" data-a="clear-filters">清除篩選</button>
+    <span class="hint" id="lf-hint"></span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>編號</th><th>時間</th><th>人員</th><th>活動</th><th>動作</th><th>內容</th><th></th></tr></thead>
+      <tbody id="log-body"><tr><td colspan="7" class="table-empty">載入中</td></tr></tbody>
+    </table>
+  </div>
+  <div class="more" id="log-more" hidden><button class="btn ghost" type="button" data-a="more-logs">載入更早的紀錄</button></div>`;
+}
+
+let lastCampaignOptions = "";
+function renderLogsBody() {
+  const sel = $("#lf-campaign");
+  if (sel) {
+    const opts = `<option value="">全部</option>` + S.logs.campaigns.map(c =>
+      `<option value="${c.id}">${esc(c.name)}${c.exists ? "" : "（已刪除）"}</option>`).join("");
+    if (opts !== lastCampaignOptions || sel.options.length === 0) { sel.innerHTML = opts; lastCampaignOptions = opts; }
+    sel.value = S.logs.filters.campaign;
+  }
+  const body = $("#log-body");
+  if (!body) return;
+  if (S.logs.loading && !S.logs.rows.length) {
+    body.innerHTML = `<tr><td colspan="7" class="table-empty">載入中</td></tr>`;
+  } else if (!S.logs.rows.length) {
+    body.innerHTML = `<tr><td colspan="7" class="table-empty">沒有符合條件的紀錄</td></tr>`;
+  } else {
+    body.innerHTML = S.logs.rows.map(r => `
+      <tr class="${r.deleted_at ? "is-deleted" : ""}">
+        <td class="c-id">#${r.id}</td>
+        <td class="c-time">${fmtTime(r.created_at)}</td>
+        <td class="c-who">${esc(r.actor)}</td>
+        <td class="c-camp">${r.campaign_name ? esc(r.campaign_name) : `<span class="muted">系統</span>`}</td>
+        <td><span class="act ${esc(r.action)}">${esc(ACTION_LABEL[r.action] || r.action)}</span></td>
+        <td><span class="desc">${esc(describe(r))}</span>
+          ${r.deleted_at ? `<div class="del-note">已刪除：${esc(r.deleted_by)}，${fmtTime(r.deleted_at)}</div>` : ""}</td>
+        <td class="c-op">${r.can_delete ? `<button class="btn small ghost danger-text" type="button" data-a="delete-log" data-id="${r.id}">刪除</button>` : ""}</td>
+      </tr>`).join("");
+  }
+  $("#log-more").hidden = S.logs.done;
+}
+
+async function loadLogs(reset, keepCount = 0) {
+  const f = S.logs.filters;
+  const hint = $("#lf-hint");
+  if (f.from && f.to && f.from > f.to) {
+    if (hint) hint.textContent = "開始日期不能晚於結束日期。";
+    S.logs.rows = []; S.logs.done = true; renderLogsBody();
+    return;
+  }
+  if (hint) hint.textContent = "";
+  const limit = reset ? Math.max(LOG_PAGE, keepCount) : LOG_PAGE;
+  const offset = reset ? 0 : S.logs.rows.length;
+  const seq = ++S.logs.seq;
+  const data = await rpc("bx_logs", {
+    p_actor: S.me.id,
+    p_campaign: f.campaign ? Number(f.campaign) : null,
+    p_from: f.from || null, p_to: f.to || null,
+    p_limit: limit, p_offset: offset
+  });
+  if (seq !== S.logs.seq) return;
+  S.logs.campaigns = data.campaigns;
+  S.logs.rows = reset ? data.rows : S.logs.rows.concat(data.rows);
+  S.logs.done = data.rows.length < limit;
+  if (S.view.type === "logs") renderLogsBody();
+}
+
+async function reloadLogs(keep) {
+  if (!keep) { S.logs.rows = []; S.logs.loading = true; renderLogsBody(); }
+  try { await loadLogs(true, keep ? S.logs.rows.length : 0); }
+  catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
+  finally { S.logs.loading = false; if (S.view.type === "logs") renderLogsBody(); }
+}
+
+async function deleteLog(id) {
+  const r = S.logs.rows.find(x => x.id === id); if (!r) return;
+  let effect = "";
+  if (r.action === "transfer") effect = `盒數會退回：「${r.to_name}」減少 ${fmt(r.qty)} 盒，「${r.from_name}」增加 ${fmt(r.qty)} 盒。`;
+  else effect = `預留會${r.qty > 0 ? "減少" : "增加"} ${fmt(Math.abs(r.qty))} 盒，總數跟著恢復。`;
+  const ok = await modal({
+    title: `刪除 #${r.id}`, confirmText: "刪除這筆", danger: true,
+    body: `<p>${esc(describe(r))}</p><p>${esc(effect)}</p><p class="muted">原筆紀錄會保留並標示已刪除。</p>`
+  });
+  if (!ok) return;
+  const res = await act("bx_delete_entry", { p_log: r.id }, "無法刪除");
+  if (res.ok) await reloadLogs(true);
+}
+
+/* ---------------- 設定 ---------------- */
+function renderSettingsShell() {
+  return `
+  <header class="page-head"><div><h1>人員與通關密碼</h1><p class="page-sub">所有活動共用同一份名單和通關密碼。</p></div></header>
+  <section class="panel">
+    <h2>人員名單</h2>
+    <p class="muted">刪除人員不影響他過去的操作紀錄。</p>
+    <form id="person-form" class="inline-form">
+      <input id="person-name" type="text" maxlength="40" placeholder="輸入名字" aria-label="新增人員名字">
+      <button class="btn primary" type="submit">新增人員</button>
+    </form>
+    <p class="form-err" id="person-err" role="alert"></p>
+    <ul class="people" id="people-list"></ul>
+  </section>
+  <section class="panel">
+    <h2>通關密碼</h2>
+    <p class="muted">變更後，其他正在使用的人會被要求重新輸入新的通關密碼。</p>
+    <form id="pass-form">
+      <div class="row2 field">
+        <div><label class="lbl" for="pass-new">新的通關密碼</label><input id="pass-new" type="password" autocomplete="new-password"></div>
+        <div><label class="lbl" for="pass-again">再輸入一次</label><input id="pass-again" type="password" autocomplete="new-password"></div>
+      </div>
+      <button class="btn primary" type="submit">變更通關密碼</button>
+      <p class="form-ok" id="pass-ok" role="status"></p>
+      <p class="form-err" id="pass-err" role="alert"></p>
+    </form>
+  </section>`;
+}
+
+function renderPeople() {
+  const ul = $("#people-list"); if (!ul) return;
+  ul.innerHTML = S.people.map(p => `
+    <li><span>${esc(p.name)}${p.id === S.me.id ? `<span class="me">目前操作中</span>` : ""}</span>
+      <button class="btn small link danger-text" type="button" data-a="delete-person" data-id="${p.id}">刪除</button></li>`).join("");
+}
+
+document.addEventListener("submit", async e => {
+  if (e.target.id === "person-form") {
+    e.preventDefault();
+    const input = $("#person-name"), err = $("#person-err");
+    const name = input.value.trim();
+    err.textContent = "";
+    if (!name) { err.textContent = "請輸入名字。"; return; }
+    const r = await run("bx_person_add", { p_name: name });
+    if (r.ok) { input.value = ""; input.focus(); }
+    else if (r.msg) err.textContent = r.msg;
+  }
+  if (e.target.id === "pass-form") {
+    e.preventDefault();
+    const a = $("#pass-new").value.trim(), b = $("#pass-again").value.trim();
+    const ok = $("#pass-ok"), err = $("#pass-err");
+    ok.textContent = ""; err.textContent = "";
+    if (!a) { err.textContent = "請輸入新的通關密碼。"; return; }
+    if (a !== b) { err.textContent = "兩次輸入的通關密碼不一樣。"; return; }
+    const r = await run("bx_passcode_change", { p_new: a });
+    if (r.ok) {
+      S.code = a;
+      $("#pass-new").value = ""; $("#pass-again").value = "";
+      ok.textContent = "通關密碼已變更。";
+    } else if (r.msg) err.textContent = r.msg;
+  }
+});
+
+async function deletePerson(id) {
+  const p = S.people.find(x => x.id === id); if (!p) return;
+  const self = id === S.me.id;
+  const ok = await confirmBox("刪除人員", self ? `確定把自己（${p.name}）從名單刪除？刪除後要重新選擇名字。` : `確定從名單刪除「${p.name}」？`, "刪除人員", true);
+  if (!ok) return;
+  const r = await act("bx_person_delete", { p_person: id }, "無法刪除");
+  if (r.ok && self) backToPick("你已經從名單刪除，請重新選擇名字。");
+}
+
+/* ---------------- 點擊與篩選 ---------------- */
+document.addEventListener("click", async e => {
+  const nav = e.target.closest("[data-nav]");
+  if (nav && S.me) {
+    if (nav.dataset.nav === "campaign") S.view = { type: "campaign", id: Number(nav.dataset.id) };
+    else S.view = { type: nav.dataset.nav };
+    render();
+    if (S.view.type === "logs") reloadLogs(false);
+    $("#content").scrollIntoView({ block: "start" });
+    return;
+  }
+  const b = e.target.closest("[data-a]");
+  if (!b || !S.me) return;
+  const id = b.dataset.id ? Number(b.dataset.id) : null;
+  const c = currentCampaign();
+  switch (b.dataset.a) {
+    case "add-campaign": return addCampaign();
+    case "rename-campaign": return c && renameCampaign(c);
+    case "end-campaign": return c && endCampaign(c);
+    case "reopen-campaign": return c && reopenCampaign(c);
+    case "delete-campaign": return c && deleteCampaign(c);
+    case "add-product": return c && addProduct(c);
+    case "rename-product": return renameProduct(id);
+    case "delete-product": return deleteProduct(id);
+    case "add-target": return addTarget(id);
+    case "rename-target": return renameTarget(id);
+    case "delete-target": return deleteTarget(id);
+    case "transfer": return openTransfer(id);
+    case "adjust": return openAdjust(id);
+    case "delete-log": return deleteLog(id);
+    case "more-logs":
+      b.disabled = true;
+      try { await loadLogs(false); } catch (ex) { if (!(ex instanceof Handled)) await alertBox(ex.message); }
+      b.disabled = false;
+      return;
+    case "clear-filters":
+      S.logs.filters = { campaign: "", from: "", to: "" };
+      $("#lf-from").value = ""; $("#lf-to").value = "";
+      return reloadLogs(false);
+    case "delete-person": return deletePerson(id);
+    case "switch-person": return backToPick();
+    case "leave": return showGate();
+  }
+});
+
+document.addEventListener("change", e => {
+  if (!S.me || S.view.type !== "logs") return;
+  const f = S.logs.filters;
+  if (e.target.id === "lf-campaign") { f.campaign = e.target.value; reloadLogs(false); }
+  if (e.target.id === "lf-from") { f.from = e.target.value; reloadLogs(false); }
+  if (e.target.id === "lf-to") { f.to = e.target.value; reloadLogs(false); }
+});
+
+showGate();
+</script>
+</body>
+</html>

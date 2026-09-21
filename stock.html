@@ -1,0 +1,2605 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ffffff">
+<title>庫存管理</title>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body {
+  --ink:#2a2f2b; --soft:#6d766e; --faint:#a4aca5;
+  --cream:#f6f3ec; --card:#fff; --rule:#e5e1d6; --hair:#f0ede4;
+  --green:#2f4a3a; --green-d:#263d2f; --green-l:#3b5b48;
+  --sand:#efe9da; --amber:#c8973a;
+  --factory:#1f6b52; --factory-bg:#e8f1ed;
+  --store:#a86410; --store-bg:#fbf1df;
+  --alert:#b8362c; --alert-bg:#fbeae8;
+  font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  color:var(--ink); background:var(--cream);
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum";
+  min-height:100vh; -webkit-text-size-adjust:100%;
+}
+button { font-family:inherit; cursor:pointer; }
+input, select { font-family:inherit; font-size:16px; color:var(--ink); font-variant-numeric:tabular-nums; }
+:focus-visible { outline:2px solid var(--green); outline-offset:1px; border-radius:4px; }
+.boot { padding:60px; text-align:center; color:var(--soft); }
+
+/* ---------- 版面 ---------- */
+.shell { display:flex; min-height:100vh; }
+.side { width:230px; flex:none; background:var(--green); color:#e9efe9;
+  display:flex; flex-direction:column; position:sticky; top:0;
+  height:100vh; overflow-y:auto; }
+.brand { display:flex; align-items:center; gap:11px; padding:20px 18px 22px; }
+.brand .mark { width:34px; height:34px; border-radius:9px; background:var(--sand);
+  color:var(--green); display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:16px; flex:none; }
+.brand .bn { font-size:15px; font-weight:700; color:#fff; letter-spacing:.02em; }
+.brand .bs { font-size:11.5px; color:#9db3a4; margin-top:2px; }
+
+.menu { padding:0 12px; display:flex; flex-direction:column; gap:3px; }
+.menu button { display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+  border:0; background:none; color:#c3d2c7; font-size:14px; padding:11px 13px;
+  border-radius:9px; min-height:44px; }
+.menu button:hover { background:var(--green-l); color:#fff; }
+.menu button.on { background:var(--sand); color:var(--green-d); font-weight:700; }
+.menu .ic { font-size:15px; width:18px; text-align:center; }
+
+.sfoot { margin-top:auto; padding:16px 18px 20px; border-top:1px solid rgba(255,255,255,.09); }
+.sme { font-size:13px; color:#e9efe9; font-weight:600; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.badge { font-size:10.5px; background:rgba(255,255,255,.14); padding:2px 6px; border-radius:4px; font-weight:500; }
+.signout { margin-top:9px; border:1px solid rgba(255,255,255,.2); background:none;
+  color:#b9c9bd; font-size:12.5px; padding:6px 12px; border-radius:7px; }
+.signout:hover { background:var(--green-l); color:#fff; }
+
+.mainwrap { flex:1; min-width:0; display:flex; flex-direction:column; }
+.topbar { background:var(--card); border-bottom:1px solid var(--rule);
+  padding:13px 22px; display:flex; align-items:center; gap:14px; position:sticky; top:0; z-index:15; }
+.burger { display:none; border:0; background:none; font-size:19px; padding:4px 8px; }
+.crumb { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.crumb span { font-size:11.5px; color:var(--faint); }
+.crumb b { font-size:16px; font-weight:700; }
+.sync { margin-left:auto; font-size:11.5px; color:var(--faint); display:flex; align-items:center; gap:6px; }
+.dot { width:7px; height:7px; border-radius:50%; }
+.dot.ok { background:var(--factory); }
+.dot.saving { background:var(--amber); }
+.dot.err { background:var(--alert); }
+.scrim { display:none; }
+
+.body { padding:20px 22px 60px; max-width:1500px; }
+
+/* ---------- 月份切換與膠囊 ---------- */
+.pager { display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:16px; }
+.pg { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:8px 15px; border-radius:8px; font-size:13.5px; min-height:40px; }
+.pg:hover { background:var(--hair); }
+.pgnow { font-size:16px; font-weight:700; min-width:120px; text-align:center; }
+
+.pills { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+.pills button { border:1px solid var(--rule); background:var(--card); color:var(--soft);
+  padding:8px 18px; border-radius:9px; font-size:13.5px; min-height:40px; }
+.pills button.on { background:var(--green); border-color:var(--green); color:#fff; font-weight:700; }
+.pills .pill-ghost { margin-left:auto; color:var(--soft); }
+
+/* ---------- 卡片 ---------- */
+.card { background:var(--card); border:1px solid var(--rule); border-radius:12px;
+  overflow:hidden; margin-bottom:14px; }
+.chead { display:flex; align-items:center; gap:10px; padding:14px 16px;
+  border-bottom:1px solid var(--hair); cursor:pointer; }
+.chead h3 { margin:0; font-size:14.5px; font-weight:700; }
+.chead .meta { font-size:12px; color:var(--faint); }
+.chead .chev { margin-left:auto; color:var(--faint); font-size:13px; }
+.mark-dot { width:8px; height:8px; border-radius:50%; background:var(--factory); flex:none; }
+.pad { padding:16px; }
+
+/* ---------- 一般表格 ---------- */
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th { font-size:11.5px; font-weight:600; color:var(--soft); text-align:right;
+  padding:9px 10px; background:#fbfaf6; border-bottom:1px solid var(--rule); white-space:nowrap; }
+th.l, td.l { text-align:left; }
+td { padding:10px; text-align:right; border-bottom:1px solid var(--hair); white-space:nowrap; }
+tbody tr:last-child td { border-bottom:0; }
+.f { color:var(--factory); }
+.s { color:var(--store); }
+.big { font-weight:700; font-size:15px; }
+.sub { display:block; font-size:11px; color:var(--faint); margin-top:1px; }
+.faint { color:var(--faint); }
+.neg { color:var(--alert) !important; font-weight:700; }
+.tag { display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:5px; font-weight:600; }
+.tag.f { background:var(--factory-bg); color:var(--factory); }
+.tag.s { background:var(--store-bg); color:var(--store); }
+.tag.admin { background:var(--sand); color:var(--green-d); }
+.scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+/* ---------- 矩陣表：品項當列、日期當欄 ---------- */
+.matrix { overflow:auto; max-height:70vh; -webkit-overflow-scrolling:touch; }
+.matrix table { border-collapse:separate; border-spacing:0; }
+.matrix th, .matrix td { border-bottom:1px solid var(--hair); }
+.matrix thead th { position:sticky; top:0; z-index:3; background:#fbfaf6;
+  text-align:center; font-size:12px; color:var(--ink); font-weight:700;
+  padding:8px 6px; min-width:66px; border-bottom:1px solid var(--rule); }
+.matrix thead th span { display:block; font-size:10.5px; color:var(--faint); font-weight:400; margin-top:1px; }
+.matrix .stick { position:sticky; left:0; z-index:2; background:#fbfaf6;
+  min-width:140px; max-width:140px; text-align:left; font-size:13px;
+  font-weight:600; color:var(--ink); padding:8px 12px;
+  border-right:1px solid var(--rule); white-space:normal; line-height:1.35; }
+.matrix thead .stick { z-index:4; }
+.matrix tbody tr:nth-child(odd) .stick { background:#f4f2ea; }
+.matrix td { padding:6px 6px; text-align:center; background:var(--card); }
+.matrix .todaycol { background:#f2f6f2; }
+.matrix thead th.todaycol { background:#e7efe8; color:var(--green); }
+.matrix td.badcell { background:var(--alert-bg); }
+.cl { font-size:13.5px; line-height:1.5; white-space:nowrap; }
+.cl + .cl { border-top:1px dotted var(--hair); margin-top:2px; padding-top:2px; }
+.cl b { font-weight:700; }
+.cl.f b { color:var(--factory); }
+.cl.s b { color:var(--store); }
+.cl.neg b { color:var(--alert); }
+.cl i { font-style:normal; font-size:10px; margin-right:4px; padding:0 3px;
+  border-radius:3px; vertical-align:1px; }
+.cl i.out { color:var(--alert); background:var(--alert-bg); }
+.cl i.in { color:var(--factory); background:var(--factory-bg); }
+
+/* ---------- 表單 ---------- */
+.btn { border:1px solid var(--green); background:var(--green); color:#fff;
+  padding:11px 17px; border-radius:9px; font-size:14px; font-weight:600; min-height:44px; }
+.btn:hover { background:var(--green-d); }
+.btn.ghost { background:none; color:var(--ink); border-color:var(--rule); font-weight:500; }
+.btn.ghost:hover { background:var(--hair); }
+.btn.danger { background:none; color:var(--alert); border-color:#e6c6c2; }
+.btn.mini { padding:7px 13px; min-height:36px; font-size:13px; }
+.btn.wide { width:100%; }
+.btn:disabled { opacity:.4; }
+
+.seg { display:flex; border:1px solid var(--rule); border-radius:9px; overflow:hidden; background:var(--card); }
+.seg button { flex:1; border:0; background:none; padding:10px 6px; font-size:13.5px;
+  color:var(--soft); min-height:44px; white-space:nowrap; }
+.seg button + button { border-left:1px solid var(--rule); }
+.seg button.on { background:var(--green); color:#fff; font-weight:700; }
+
+.fields { display:flex; flex-wrap:wrap; gap:11px; }
+.fld { display:flex; flex-direction:column; gap:5px; flex:1 1 140px; min-width:0; }
+.fld.full { flex-basis:100%; }
+.fld label { font-size:11.5px; color:var(--soft); }
+.fld input, .fld select { padding:10px 11px; border:1px solid var(--rule); border-radius:9px;
+  background:var(--card); width:100%; min-height:44px; }
+
+.note { font-size:12px; color:var(--soft); line-height:1.7; margin:8px 2px 0; }
+.note.warn { color:var(--alert); }
+.alertbox { background:var(--alert-bg); border:1px solid #eed3cf; border-radius:11px;
+  padding:13px 15px; margin-bottom:14px; }
+.alertbox b { font-size:13.5px; }
+.alertbox ul { margin:7px 0 0; padding-left:18px; font-size:13px; }
+.alertbox li { margin:3px 0; }
+.empty { padding:34px 14px; text-align:center; color:var(--soft); font-size:13.5px; }
+h2.pg2 { font-size:17px; font-weight:700; margin:0 0 4px; }
+p.lede { margin:0 0 15px; font-size:12.5px; color:var(--soft); line-height:1.7; }
+h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
+
+/* ---------- 訂單卡 ---------- */
+.olist { display:flex; flex-direction:column; }
+.ord { padding:14px 16px; border-bottom:1px solid var(--hair); }
+.ord:last-child { border-bottom:0; }
+.ord .top { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+.ord .date { font-size:17px; font-weight:700; }
+.ord .wd { font-size:11.5px; color:var(--faint); }
+.ord .cust { font-size:14px; font-weight:600; margin-left:auto; }
+.ord .lines { font-size:13.5px; color:var(--soft); line-height:1.75; }
+.ord .lines b { color:var(--ink); }
+.ord .no { font-size:11.5px; color:var(--faint); margin-top:5px; }
+.ord .acts { display:flex; gap:8px; margin-top:10px; }
+
+.tabs { display:flex; gap:18px; border-bottom:1px solid var(--rule); margin-bottom:15px; }
+.tabs button { border:0; background:none; padding:9px 0; font-size:14px; color:var(--soft);
+  border-bottom:2px solid transparent; margin-bottom:-1px; min-height:42px; }
+.tabs button.on { color:var(--green); font-weight:700; border-bottom-color:var(--green); }
+
+.sheet { position:fixed; inset:0; z-index:60; background:var(--cream); display:flex; flex-direction:column; }
+.sheet header { background:var(--card); border-bottom:1px solid var(--rule);
+  padding:13px 16px; font-weight:700; font-size:15px; }
+.sheet .inner { flex:1; overflow:auto; padding:16px; }
+.sheet footer { background:var(--card); border-top:1px solid var(--rule);
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom)); display:flex; gap:10px; }
+.sheet footer .btn { flex:1; }
+.row { display:flex; gap:8px; align-items:center; margin-bottom:9px; }
+.row select { flex:1; min-width:0; padding:10px; border:1px solid var(--rule);
+  border-radius:9px; min-height:44px; background:var(--card); }
+.row input { width:92px; padding:10px; border:1px solid var(--rule); border-radius:9px; min-height:44px; }
+
+.toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+  background:var(--green-d); color:#fff; padding:11px 20px; border-radius:9px;
+  font-size:13.5px; z-index:90; max-width:88%; text-align:center; }
+
+.gate { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px; }
+.gate .box { width:100%; max-width:360px; }
+.gate h1 { font-size:21px; font-weight:700; margin:0 0 6px; }
+.gate p { font-size:13px; color:var(--soft); line-height:1.7; margin:0 0 18px; }
+.gate code { background:var(--sand); padding:1px 5px; border-radius:4px; font-size:12px; }
+
+.tabbar { display:none; }
+
+/* ---------- 手機 ---------- */
+@media (max-width:860px) {
+  .side { position:fixed; left:0; top:0; z-index:70; transform:translateX(-100%);
+    transition:transform .18s ease; height:100vh; }
+  .side.open { transform:translateX(0); }
+  .scrim { display:block; position:fixed; inset:0; background:rgba(20,30,24,.45); z-index:65; }
+  .burger { display:block; }
+  .topbar { padding:11px 14px; }
+  .body { padding:14px 12px 88px; }
+  .pgnow { font-size:15px; min-width:96px; }
+  .pg { padding:8px 12px; font-size:13px; }
+  .matrix { max-height:64vh; }
+  .matrix .stick { min-width:96px; max-width:96px; font-size:12px; padding:7px 8px; }
+  .matrix thead th { min-width:60px; font-size:11.5px; }
+  .cl { font-size:12.5px; }
+  .ord .top { flex-wrap:wrap; }
+  .toast { bottom:76px; }
+  .tabbar { display:flex; position:fixed; left:0; right:0; bottom:0; z-index:50;
+    background:var(--card); border-top:1px solid var(--rule);
+    padding-bottom:env(safe-area-inset-bottom); }
+  .tabbar button { flex:1; border:0; background:none; padding:8px 2px 9px; font-size:11.5px;
+    color:var(--soft); display:flex; flex-direction:column; align-items:center; gap:3px; min-height:54px; }
+  .tabbar button.on { color:var(--green); font-weight:700; }
+  .tabbar .ic { font-size:16px; line-height:1; }
+}
+
+/* ---------- 版本標示 ---------- */
+.ver { margin-top:18px; text-align:center; font-size:11.5px; color:var(--faint); }
+.sver { margin-top:10px; font-size:11px; color:#8fa595; }
+
+/* ---------- 名字登入頁 ---------- */
+.box.login { max-width:420px; background:var(--card); border:1px solid var(--rule);
+  border-radius:14px; padding:26px 24px 20px; }
+.hint { font-size:12.5px; color:var(--soft); margin:0 0 14px; }
+.names { display:flex; flex-wrap:wrap; gap:9px; }
+.names button { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:11px 18px; border-radius:9px; font-size:14.5px; min-height:46px; }
+.names button:hover { border-color:var(--green); color:var(--green); background:#f4f7f4; }
+.picked { display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  padding:12px 14px; background:var(--sand); border-radius:9px; }
+.picked b { font-size:16px; }
+.linky { border:0; background:none; color:var(--soft); font-size:12.5px;
+  text-decoration:underline; padding:6px 4px; margin-left:auto; }
+.linky.center { display:block; margin:14px auto 0; }
+
+
+
+.fld input.pin { font-size:22px; letter-spacing:.4em; text-align:center; padding:12px; }
+
+/* ---------- 桌機：收緊版面，表單不要撐滿整個螢幕 ---------- */
+@media (min-width:861px) {
+  .body { max-width:1400px; padding:18px 22px 50px; }
+  .card { max-width:880px; }
+  .card.full { max-width:none; }
+  .alertbox { max-width:880px; }
+  .pad { padding:14px 16px 16px; }
+  .fld { flex:0 1 220px; }
+  .fld input, .fld select { min-height:38px; padding:8px 10px; font-size:14px; }
+  .fld label { font-size:11px; }
+  .btn { padding:9px 16px; min-height:38px; font-size:13.5px; }
+  .btn.mini { padding:5px 11px; min-height:31px; font-size:12.5px; }
+  .pad .btn.wide, .body > .btn.wide { width:auto; min-width:180px; }
+  .seg { max-width:520px; }
+  .seg button { min-height:38px; font-size:13px; padding:8px 12px; }
+  .body > .seg { max-width:520px; }
+  td, th { padding:8px 10px; }
+  .chead { padding:12px 16px; }
+  .chead h3 { font-size:13.5px; }
+  .ord { padding:12px 16px; }
+  .note { max-width:880px; }
+}
+
+/* ---------- 矩陣左欄的地點標註 ---------- */
+.sinner { display:flex; align-items:center; gap:8px; }
+.sinner .iname { flex:1; min-width:0; }
+.legend { display:flex; flex-direction:column; flex:none; text-align:right; }
+.legend .cl { font-size:10.5px; }
+.legend .cl b { font-weight:600; }
+@media (min-width:861px) {
+  .matrix .stick { min-width:178px; max-width:178px; }
+}
+@media (max-width:860px) {
+  .matrix .stick { min-width:124px; max-width:124px; }
+  .legend .cl { font-size:9.5px; }
+}
+
+
+/* ---------- 桌機：表單縮成一張窄面板，側欄留著 ---------- */
+@media (min-width:861px) {
+  .sheet { left:230px; display:block; overflow:auto;
+    background:rgba(28,40,32,.24); padding:30px 0 40px 30px; }
+  .sheet header, .sheet .inner, .sheet footer {
+    width:560px; max-width:100%; background:var(--card); }
+  .sheet header { border:1px solid var(--rule); border-bottom:1px solid var(--hair);
+    border-radius:12px 12px 0 0; }
+  .sheet .inner { border-left:1px solid var(--rule); border-right:1px solid var(--rule);
+    overflow:visible; padding:16px; }
+  .sheet footer { border:1px solid var(--rule); border-top:1px solid var(--hair);
+    border-radius:0 0 12px 12px; padding:12px 16px; }
+  .sheet footer .btn { flex:0 0 auto; min-width:120px; }
+  .sheet footer { justify-content:flex-end; }
+  .sheet .row input { width:84px; }
+}
+
+/* ---------- 側欄的外部連結 ---------- */
+.extlink { display:flex; align-items:center; gap:11px; padding:11px 13px;
+  margin-top:10px; border-top:1px solid rgba(255,255,255,.1); padding-top:16px;
+  color:#a9bdae; font-size:14px; text-decoration:none; min-height:44px; }
+.extlink:hover { color:#fff; }
+.extlink .arrow { margin-left:auto; font-size:11px; opacity:.7; }
+
+/* ---------- 訂單頁工具列 ---------- */
+.toolrow { display:flex; gap:10px; align-items:center; margin-bottom:14px; }
+.toolrow .btn { min-width:0; }
+
+/* ---------- 新增人員後的臨時碼提示 ---------- */
+.handout { background:var(--sand); border-radius:9px; padding:12px 14px; margin-bottom:14px; font-size:13px; }
+.handout b { font-size:14.5px; display:block; margin-bottom:4px; }
+.handout div { color:var(--soft); line-height:1.6; }
+.handout .linky { margin-left:0; padding-left:0; }
+
+/* ---------- 登入面板 ---------- */
+.gate { background:var(--cream); }
+.panel { width:100%; max-width:440px; background:var(--card); border:1px solid var(--rule);
+  border-radius:16px; padding:28px 26px 18px; box-shadow:0 2px 14px rgba(40,50,44,.06); }
+.ptitle { font-size:20px; font-weight:700; margin:0 0 4px; letter-spacing:.01em; }
+.prule { border:0; border-top:1px solid var(--hair); margin:18px 0 14px; }
+.phint { font-size:12.5px; color:var(--soft); line-height:1.7; margin:0 0 16px; }
+.pgroup { margin-bottom:14px; }
+.glabel { font-size:12px; color:var(--store); font-weight:600; margin-bottom:7px; }
+.pgroup .names { display:flex; flex-wrap:wrap; gap:8px; }
+.pgroup .names button { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:10px 18px; border-radius:9px; font-size:14.5px; min-height:44px; }
+.pgroup .names button:hover { border-color:var(--green); color:var(--green); background:#f4f7f4; }
+.btn.dark { background:var(--green-d); border-color:var(--green-d); }
+.pfoot { margin-top:18px; padding-top:14px; border-top:1px solid var(--hair);
+  font-size:11.5px; color:var(--faint); text-align:center; }
+.panel .ver { display:none; }
+
+/* ---------- 訂單表格 ---------- */
+.orders th { background:#faf8f2; font-size:12px; padding:11px 12px; }
+.orders td { padding:12px; vertical-align:middle; border-bottom:1px solid var(--hair); }
+.orders tbody tr:hover td { background:#fbfaf6; }
+.orders .odate { font-weight:600; font-size:14px; }
+.orders .ocust { font-weight:600; }
+.orders .oacts { white-space:nowrap; text-align:right; }
+.orders td div + div { margin-top:3px; }
+
+/* ---------- 訂單表格欄寬 ---------- */
+.orders { table-layout:fixed; }
+.orders th:nth-child(1), .orders td:nth-child(1) { width:13%; }
+.orders th:nth-child(2), .orders td:nth-child(2) { width:15%; }
+.orders th:nth-child(3), .orders td:nth-child(3) { width:24%; }
+.orders th:nth-child(4), .orders td:nth-child(4) { width:9%; text-align:right; }
+.orders th:nth-child(5), .orders td:nth-child(5) { width:12%; }
+.orders th:nth-child(6), .orders td:nth-child(6) { width:13%; }
+.orders th:nth-child(7), .orders td:nth-child(7) { width:14%; }
+.orders td { overflow:hidden; text-overflow:ellipsis; }
+.orders td:nth-child(3) { white-space:normal; }
+@media (max-width:860px) {
+  .orders { table-layout:auto; min-width:660px; }
+  .orders th, .orders td { width:auto !important; }
+}
+
+/* ---------- 訂單表格：好掃的版本 ---------- */
+.orders th:nth-child(1), .orders td:nth-child(1) { width:11%; }
+.orders th:nth-child(2), .orders td:nth-child(2) { width:16%; }
+.orders th:nth-child(3), .orders td:nth-child(3) { width:26%; }
+.orders th:nth-child(4), .orders td:nth-child(4) { width:8%; }
+.orders th:nth-child(5), .orders td:nth-child(5) { width:10%; }
+.orders th:nth-child(6), .orders td:nth-child(6) { width:12%; }
+.orders th:nth-child(7), .orders td:nth-child(7) { width:17%; }
+.orders .odate { font-size:16px; font-weight:700; letter-spacing:-.01em; }
+.orders tbody tr:nth-child(even) td { background:#fcfbf7; }
+.orders tbody tr:hover td { background:#f5f7f4; }
+.orders tr.otoday td { background:#eef4ef; box-shadow:inset 0 0 0 0 transparent; }
+.orders tr.otoday td:first-child { box-shadow:inset 3px 0 0 var(--green); }
+.orders tr.otoday .odate { color:var(--green); }
+.orders tr.opast td { color:#9aa39c; }
+.orders tr.opast .odate { color:#aab2ab; font-weight:600; }
+.orders tr.opast .ocust { font-weight:500; }
+.orders td:nth-child(4) .big { font-size:15px; }
+
+/* ---------- 訂單表格：只留交錯底色，欄寬重排 ---------- */
+.orders tr.otoday td, .orders tr.opast td { background:inherit; color:inherit; box-shadow:none; }
+.orders th:nth-child(1), .orders td:nth-child(1) { width:12%; }
+.orders th:nth-child(2), .orders td:nth-child(2) { width:18%; }
+.orders th:nth-child(3), .orders td:nth-child(3) { width:11%; }
+.orders th:nth-child(4), .orders td:nth-child(4) { width:11%; }
+.orders th:nth-child(5), .orders td:nth-child(5) { width:13%; }
+.orders th:nth-child(6), .orders td:nth-child(6) { width:16%; }
+.orders th:nth-child(7), .orders td:nth-child(7) { width:19%; }
+
+/* ---------- 矩陣：進／出／餘三行 ---------- */
+.matrix td { padding:5px 6px; }
+.cl { font-size:12px; line-height:1.55; white-space:nowrap; text-align:center; }
+.cl + .cl { border-top:0; margin-top:0; padding-top:0; }
+.cl.in { color:#7f8b81; }
+.cl.out { color:#a98d86; }
+.cl.in.f, .cl.in.s { color:var(--factory); }
+.cl.out.f, .cl.out.s { color:var(--alert); }
+.cl.bal { border-top:1px solid var(--hair); margin-top:2px; padding-top:2px; font-size:13px; }
+.cl.bal.f b { color:var(--factory); }
+.cl.bal.s b { color:var(--store); }
+.cl.bal.neg b { color:var(--alert); }
+.legend .cl { text-align:right; font-size:10.5px; color:var(--faint); }
+.legend .cl.bal { font-weight:600; color:var(--soft); }
+.legend .cl.in, .legend .cl.out { color:var(--faint); }
+.matrix .stick { min-width:150px; max-width:150px; }
+@media (max-width:860px) {
+  .matrix .stick { min-width:112px; max-width:112px; }
+  .legend .cl { font-size:9.5px; }
+  .cl { font-size:11px; }
+}
+
+/* ---------- 矩陣：每個日期兩欄（進出、庫存） ---------- */
+.grid2 thead th.dgrp { border-left:2px solid var(--rule); }
+.grid2 tbody td.dgrp { border-left:2px solid var(--rule); }
+.grid2 .sub3 { font-size:10.5px; font-weight:600; color:var(--faint);
+  padding:4px 6px; background:#fbfaf6; min-width:56px; }
+.grid2 thead th { padding:7px 6px; }
+.grid2 td { padding:5px 6px; text-align:center; }
+.cl.mv2 { font-size:12px; line-height:1.6; min-height:19px; }
+.cl.mv2.plus { color:var(--factory); }
+.cl.mv2.minus { color:var(--alert); }
+.cl.bal { font-size:13.5px; line-height:1.6; border-top:0; margin:0; padding:0; }
+.cl.bal.f b { color:var(--factory); }
+.cl.bal.s b { color:var(--store); }
+.cl.bal.neg b { color:var(--alert); }
+.cl.leg { font-size:10.5px; line-height:1.6; text-align:right; color:var(--soft); font-weight:600; }
+.legend .cl.leg.f { color:var(--factory); }
+.legend .cl.leg.s { color:var(--store); }
+@media (max-width:860px) {
+  .grid2 .sub3 { min-width:48px; font-size:9.5px; }
+  .cl.mv2 { font-size:11px; }
+  .cl.bal { font-size:12px; }
+}
+
+/* ---------- 矩陣：完整格線 ---------- */
+.grid2 { border-collapse:separate; border-spacing:0; }
+.grid2 th, .grid2 td { border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); }
+.grid2 thead tr:first-child th { border-top:1px solid var(--rule); }
+.grid2 .stick { border-right:2px solid #cfd6cd; }
+.grid2 thead th.dgrp, .grid2 tbody td.dgrp { border-left:2px solid #cfd6cd; }
+.grid2 tbody tr:last-child td { border-bottom:1px solid var(--rule); }
+.grid2 td { vertical-align:middle; }
+/* 工廠與門市之間的分隔 */
+.grid2 .cl + .cl { border-top:1px dotted #dcdfd9; padding-top:3px; margin-top:3px; }
+.legend .cl + .cl { border-top:1px dotted #dcdfd9; padding-top:3px; margin-top:3px; }
+.grid2 .badcell { background:var(--alert-bg); }
+.grid2 .todaycol { background:#eef4ef; }
+
+/* ---------- 可輸入的進出格 ---------- */
+.cl.mv2.edit { cursor:cell; border-radius:3px; min-height:20px; }
+.cl.mv2.edit:hover { background:#eef2ee; box-shadow:inset 0 0 0 1px #c7d2c8; }
+.cellin { width:100%; max-width:62px; padding:2px 4px; font-size:12px; text-align:center;
+  border:1px solid var(--green); border-radius:4px; min-height:22px; }
+.askmask { position:fixed; inset:0; background:rgba(28,40,32,.4); z-index:70;
+  display:flex; align-items:center; justify-content:center; padding:20px; }
+.askbox { background:var(--card); border-radius:12px; padding:22px 22px 16px;
+  width:100%; max-width:320px; text-align:center; }
+.askbox b { font-size:15px; }
+.askbox p { font-size:13px; color:var(--soft); margin:6px 0 16px; }
+.askacts { display:flex; gap:10px; }
+.askacts .btn { flex:1; }
+
+/* ---------- 數字欄位不要上下箭頭 ---------- */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+
+/* ---------- 訂單數量置中 ---------- */
+.orders th:nth-child(4), .orders td:nth-child(4) { text-align:center; }
+
+/* ---------- 安全庫存欄位與登入公告 ---------- */
+.minbox { width:64px; padding:5px 7px; border:1px solid var(--rule); border-radius:6px;
+  text-align:center; font-size:13px; min-height:32px; }
+.minbox:focus { border-color:var(--green); }
+.askbox.notice { max-width:420px; text-align:left; }
+.askbox.notice b { display:block; margin-bottom:12px; font-size:15px; }
+.lowtab { width:100%; font-size:13px; margin-bottom:16px; }
+.lowtab td { padding:6px 6px; border-bottom:1px solid var(--hair); text-align:right; }
+.lowtab td.l { text-align:left; }
+.nfoot { font-size:11.5px; color:var(--faint); text-align:center; margin:10px 0 0; }
+
+/* ---------- 禮盒選擇 ---------- */
+.boxpick { display:flex; gap:8px; flex-wrap:wrap; }
+.boxpick button { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:10px 16px; border-radius:9px; font-size:14px; min-height:44px; }
+.boxpick button.on { background:var(--green); border-color:var(--green); color:#fff; font-weight:700; }
+.boxcfg { display:flex; flex-direction:column; gap:11px; }
+.boxsum { background:var(--sand); border-radius:9px; padding:12px 14px; font-size:13.5px; line-height:1.7; }
+.boxsum b { display:block; font-size:12px; color:var(--soft); margin-bottom:4px; font-weight:600; }
+.warntxt { color:var(--alert); }
+
+/* ---------- 口味按鈕 ---------- */
+.chips { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.chips button { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:9px 15px; border-radius:9px; font-size:14px; min-height:42px;
+  display:inline-flex; align-items:center; gap:7px; }
+.chips button:hover { border-color:var(--green); }
+.chips button.on { background:var(--green); border-color:var(--green); color:#fff; font-weight:600; }
+.chips button.off { opacity:.4; }
+.chips.big button { padding:10px 16px; min-height:44px; }
+.chips .cnt { background:rgba(255,255,255,.25); border-radius:5px; padding:0 6px;
+  font-size:12px; font-weight:700; }
+.chips .picked-n { font-size:12px; color:var(--soft); margin-left:2px; }
+
+</style>
+</head>
+<body>
+<div id="root"><div class="boot">載入中…</div></div>
+
+<script>
+const {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef
+} = React;
+
+/* ==================================================================
+   設定：把這兩行換成你的 Supabase 專案資料
+   Supabase 後台 → Project Settings → API
+   Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
+   anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
+   ================================================================== */
+const VERSION = "2026-09-15b";
+const LOW_DAYS = 7;
+
+/* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
+   使用者完全不會看到這一段。舊的長密碼也還能用，登入時兩種都試。 */
+const PIN_TAIL = "-ld24";
+const padPin = p => p + PIN_TAIL;
+const SUPABASE_URL = "https://ogjgxzzymdjyxcdnzuee.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
+const configured = SUPABASE_URL.indexOf("你的") === -1 && SUPABASE_ANON_KEY.indexOf("你的") === -1;
+const sb = configured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* ------------------------------------------------------------------ */
+/* 小工具                                                              */
+/* ------------------------------------------------------------------ */
+
+const LOCS = [{
+  id: "factory",
+  name: "工廠"
+}, {
+  id: "store",
+  name: "門市"
+}];
+const LOC_NAME = {
+  factory: "工廠",
+  store: "門市"
+};
+const ENTRY_LABEL = {
+  in: "入庫",
+  transfer_out: "撥出",
+  transfer_in: "調入",
+  adjust: "盤點調整"
+};
+const pad = n => String(n).padStart(2, "0");
+const today = () => new Date().toLocaleDateString("sv-SE");
+const plusDays = n => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString("sv-SE");
+};
+const ALERT_DAYS = 14;
+const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+const fmt = n => n === 0 ? "0" : n.toLocaleString("en-US");
+const mdOf = d => Number(d.slice(5, 7)) + "/" + Number(d.slice(8));
+const WD = ["日", "一", "二", "三", "四", "五", "六"];
+const weekdayOf = d => WD[new Date(d + "T00:00:00").getDay()];
+const tsOf = iso => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+};
+function balanceAt(db, itemId, loc, dateStr) {
+  let v = 0;
+  for (const e of db.entries) if (e.itemId === itemId && e.loc === loc && e.date <= dateStr) v += e.qty;
+  for (const o of db.orders) {
+    if (o.loc !== loc || o.date > dateStr) continue;
+    for (const l of o.lines) if (l.itemId === itemId) v -= l.qty;
+  }
+  return v;
+}
+const currentQty = (db, itemId, loc) => balanceAt(db, itemId, loc, today());
+function buildMonth(db, itemId, year, month) {
+  const total = daysInMonth(year, month);
+  const first = year + "-" + pad(month) + "-01";
+  const inn = {
+    factory: {},
+    store: {}
+  }; // 入庫、撥調進
+  const out = {
+    factory: {},
+    store: {}
+  }; // 出貨、撥調出、盤點短少
+  let f = 0;
+  let s = 0;
+  for (const e of db.entries) {
+    if (e.itemId !== itemId) continue;
+    if (e.date < first) {
+      if (e.loc === "factory") f += e.qty;else s += e.qty;
+    } else if (inn[e.loc]) {
+      if (e.qty > 0) inn[e.loc][e.date] = (inn[e.loc][e.date] || 0) + e.qty;else out[e.loc][e.date] = (out[e.loc][e.date] || 0) - e.qty;
+    }
+  }
+  for (const o of db.orders) {
+    let q = 0;
+    for (const l of o.lines) if (l.itemId === itemId) q += l.qty;
+    if (!q) continue;
+    if (o.date < first) {
+      if (o.loc === "factory") f -= q;else s -= q;
+    } else if (out[o.loc]) {
+      out[o.loc][o.date] = (out[o.loc][o.date] || 0) + q;
+    }
+  }
+  const rows = [];
+  for (let d = 1; d <= total; d++) {
+    const date = year + "-" + pad(month) + "-" + pad(d);
+    const fIn = inn.factory[date] || 0;
+    const sIn = inn.store[date] || 0;
+    const fOut = out.factory[date] || 0;
+    const sOut = out.store[date] || 0;
+    f = f + fIn - fOut;
+    s = s + sIn - sOut;
+    rows.push({
+      date,
+      fIn,
+      sIn,
+      fOut,
+      sOut,
+      fLeft: f,
+      sLeft: s,
+      total: f + s
+    });
+  }
+  return rows;
+}
+function lowStockScan(db) {
+  const out = [];
+  for (let k = 0; k <= LOW_DAYS; k++) {
+    const d = plusDays(k);
+    for (const it of db.items) {
+      if (!it.active) continue;
+      for (const loc of ["factory", "store"]) {
+        const min = loc === "factory" ? it.minFactory : it.minStore;
+        if (!min) continue;
+        if (out.some(x => x.item.id === it.id && x.loc === loc)) continue;
+        const v = balanceAt(db, it.id, loc, d);
+        if (v < min) out.push({
+          item: it,
+          loc,
+          date: d,
+          qty: v,
+          min
+        });
+      }
+    }
+  }
+  out.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* 資料存取                                                            */
+/* ------------------------------------------------------------------ */
+
+async function fetchAll() {
+  const [items, orders, entries, logs, users] = await Promise.all([sb.from("items").select("*").order("sku"), sb.from("orders").select("*, order_lines(*)").order("ship_date"), sb.from("stock_entries").select("*").order("created_at"), sb.from("audit_logs").select("*").order("created_at", {
+    ascending: false
+  }).limit(400), sb.from("app_users").select("*").order("name")]);
+  const err = [items, orders, entries, logs, users].find(r => r.error);
+  if (err) throw err.error;
+  return {
+    items: (items.data || []).map(i => ({
+      id: i.id,
+      sku: i.sku,
+      name: i.name,
+      unit: i.unit,
+      active: i.active,
+      minFactory: i.min_factory || 0,
+      minStore: i.min_store || 0
+    })),
+    orders: (orders.data || []).map(o => ({
+      id: o.id,
+      no: o.no,
+      extNo: o.ext_no,
+      customer: o.customer,
+      date: o.ship_date,
+      loc: o.loc,
+      createdBy: o.created_by_name,
+      editedBy: o.edited_by_name,
+      editedAt: tsOf(o.edited_at),
+      boxLabel: o.box_label,
+      lines: (o.order_lines || []).map(l => ({
+        id: l.id,
+        itemId: l.item_id,
+        qty: l.qty
+      }))
+    })),
+    entries: (entries.data || []).map(e => ({
+      id: e.id,
+      date: e.entry_date,
+      ts: tsOf(e.created_at),
+      loc: e.loc,
+      itemId: e.item_id,
+      qty: e.qty,
+      type: e.type,
+      before: e.before_qty,
+      after: e.after_qty,
+      note: e.note,
+      operator: e.operator_name,
+      userId: e.operator_id
+    })),
+    logs: (logs.data || []).map(l => ({
+      id: l.id,
+      ts: tsOf(l.created_at),
+      operator: l.operator_name,
+      userId: l.operator_id,
+      action: l.action,
+      summary: l.summary
+    })),
+    users: (users.data || []).map(u => ({
+      id: u.id,
+      name: u.name,
+      username: u.username,
+      role: u.role,
+      active: u.active,
+      mustSetPin: u.must_set_pin,
+      noticeSeenOn: u.notice_seen_on
+    }))
+  };
+}
+
+/* ==================================================================
+   主元件
+   ================================================================== */
+
+function App() {
+  const [session, setSession] = useState(undefined);
+  const [db, setDb] = useState(null);
+  const [sync, setSync] = useState("loading");
+  const [page, setPage] = useState("stock");
+  const [toast, setToast] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
+  const [noticeClosed, setNoticeClosed] = useState(false);
+  const timer = useRef(null);
+  const flash = useCallback(m => {
+    setToast(m);
+    setTimeout(() => setToast(""), 2800);
+  }, []);
+  const load = useCallback(async quiet => {
+    if (!quiet) setSync("loading");
+    try {
+      setDb(await fetchAll());
+      setSync("ok");
+    } catch (e) {
+      console.error(e);
+      setSync("err");
+    }
+  }, []);
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({
+      data
+    }) => setSession(data.session));
+    const {
+      data: sub
+    } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  useEffect(() => {
+    if (!session) return;
+    load();
+    const bump = () => {
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => load(true), 600);
+    };
+    const ch = sb.channel("inv-all").on("postgres_changes", {
+      event: "*",
+      schema: "public"
+    }, bump).subscribe();
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") load(true);
+    }, 60000);
+    const onVis = () => document.visibilityState === "visible" && load(true);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      sb.removeChannel(ch);
+      clearInterval(poll);
+      clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [session, load]);
+  if (!configured) return /*#__PURE__*/React.createElement(SetupHelp, null);
+  if (session === undefined) return /*#__PURE__*/React.createElement("div", {
+    className: "boot"
+  }, "載入中…");
+  if (!session) return /*#__PURE__*/React.createElement(LoginScreen, {
+    flash: flash,
+    toast: toast
+  });
+  if (!db) return /*#__PURE__*/React.createElement("div", {
+    className: "boot"
+  }, "載入中…");
+  const me = db.users.find(u => u.id === session.user.id) || {
+    id: session.user.id,
+    name: session.user.email,
+    role: "staff",
+    active: true
+  };
+  const run = async (fn, okMsg) => {
+    setSync("saving");
+    try {
+      await fn();
+      await load(true);
+      setSync("ok");
+      if (okMsg) flash(okMsg);
+      return true;
+    } catch (e) {
+      console.error(e);
+      setSync("err");
+      flash(e && e.message ? "存不進去：" + e.message : "存不進去，檢查網路");
+      return false;
+    }
+  };
+  const low = lowStockScan(db);
+  const showNotice = !noticeClosed && low.length > 0 && me.noticeSeenOn !== today();
+  const closeNotice = async () => {
+    setNoticeClosed(true);
+    try {
+      await sb.from("app_users").update({
+        notice_seen_on: today()
+      }).eq("id", me.id);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  if (me.mustSetPin) {
+    return /*#__PURE__*/React.createElement(SetPinGate, {
+      me: me,
+      flash: flash,
+      toast: toast,
+      onDone: () => load(true)
+    });
+  }
+  const logIt = (action, summary, snapshot) => sb.from("audit_logs").insert({
+    action,
+    summary,
+    snapshot: snapshot || null,
+    operator_id: me.id,
+    operator_name: me.name
+  });
+  const ctx = {
+    db,
+    me,
+    run,
+    logIt,
+    flash,
+    reload: () => load(true)
+  };
+  const NAV = [["orders", "訂單", "▦"], ["stock", "庫存總覽", "▤"], ["ops", "撥調", "⇄"], ["settings", "設定", "◇"], ["logs", "紀錄", "☰"]];
+  const TITLE = {
+    stock: "庫存總覽",
+    orders: "訂單",
+    ops: "撥調",
+    settings: "設定",
+    logs: "紀錄"
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "shell"
+  }, /*#__PURE__*/React.createElement("aside", {
+    className: "side" + (navOpen ? " open" : "")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "brand"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mark"
+  }, "庫"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "bn"
+  }, "庫存管理"), /*#__PURE__*/React.createElement("div", {
+    className: "bs"
+  }, "工廠 ＋ 門市"))), /*#__PURE__*/React.createElement("nav", {
+    className: "menu"
+  }, NAV.map(([id, label, ic]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    className: page === id ? "on" : "",
+    onClick: () => {
+      setPage(id);
+      setNavOpen(false);
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "ic"
+  }, ic), label))), /*#__PURE__*/React.createElement("div", {
+    className: "sfoot"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sme"
+  }, me.name, me.role === "admin" && /*#__PURE__*/React.createElement("span", {
+    className: "badge"
+  }, "管理者")), /*#__PURE__*/React.createElement("button", {
+    className: "signout",
+    onClick: () => sb.auth.signOut()
+  }, "登出"), /*#__PURE__*/React.createElement("div", {
+    className: "sver"
+  }, "版本 ", VERSION))), navOpen && /*#__PURE__*/React.createElement("div", {
+    className: "scrim",
+    onClick: () => setNavOpen(false)
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "mainwrap"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "topbar"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "burger",
+    onClick: () => setNavOpen(true)
+  }, "☰"), /*#__PURE__*/React.createElement("div", {
+    className: "crumb"
+  }, /*#__PURE__*/React.createElement("span", null, "庫存管理"), /*#__PURE__*/React.createElement("b", null, TITLE[page])), /*#__PURE__*/React.createElement("div", {
+    className: "sync"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "dot " + (sync === "ok" ? "ok" : sync === "err" ? "err" : "saving")
+  }), sync === "ok" ? "已同步" : sync === "saving" ? "儲存中" : sync === "err" ? "沒同步到" : "載入中")), /*#__PURE__*/React.createElement("main", {
+    className: "body"
+  }, page === "stock" && /*#__PURE__*/React.createElement(StockPage, ctx), page === "orders" && /*#__PURE__*/React.createElement(OrdersPage, ctx), page === "ops" && /*#__PURE__*/React.createElement(OpsPage, ctx), page === "settings" && /*#__PURE__*/React.createElement(SettingsPage, ctx), page === "logs" && /*#__PURE__*/React.createElement(LogsPage, ctx))), /*#__PURE__*/React.createElement("nav", {
+    className: "tabbar"
+  }, NAV.map(([id, label, ic]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    className: page === id ? "on" : "",
+    onClick: () => setPage(id)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "ic"
+  }, ic), label === "庫存總覽" ? "庫存" : label))), showNotice && /*#__PURE__*/React.createElement("div", {
+    className: "askmask"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "askbox notice"
+  }, /*#__PURE__*/React.createElement("b", null, "接下來 ", LOW_DAYS, " 天有 ", low.length, " 項低於安全庫存"), /*#__PURE__*/React.createElement("table", {
+    className: "lowtab"
+  }, /*#__PURE__*/React.createElement("tbody", null, low.map((x, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, x.item.name), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tag " + (x.loc === "factory" ? "f" : "s")
+  }, LOC_NAME[x.loc])), /*#__PURE__*/React.createElement("td", {
+    className: "l faint"
+  }, mdOf(x.date)), /*#__PURE__*/React.createElement("td", {
+    className: x.qty < 0 ? "neg" : ""
+  }, fmt(x.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "faint"
+  }, "／", fmt(x.min)))))), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    onClick: closeNotice
+  }, "知道了"), /*#__PURE__*/React.createElement("p", {
+    className: "nfoot"
+  }, "今天不會再跳，明天第一次登入才會再提醒。"))), toast && /*#__PURE__*/React.createElement("div", {
+    className: "toast"
+  }, toast));
+}
+
+/* ------------------------------------------------------------------ */
+/* 設定說明與登入                                                      */
+/* ------------------------------------------------------------------ */
+
+function SetPinGate({
+  me,
+  flash,
+  toast,
+  onDone
+}) {
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (p1.length < 4) return flash("密碼至少 4 碼");
+    if (p1 !== p2) return flash("兩次輸入不一樣");
+    setBusy(true);
+    try {
+      const {
+        error
+      } = await sb.auth.updateUser({
+        password: p1 + PIN_TAIL
+      });
+      if (error) throw error;
+      const r = await sb.from("app_users").update({
+        must_set_pin: false
+      }).eq("id", me.id);
+      if (r.error) throw r.error;
+      await onDone();
+    } catch (e) {
+      console.error(e);
+      flash("設定失敗：" + (e && e.message || ""));
+      setBusy(false);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    className: "gate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "box login"
+  }, /*#__PURE__*/React.createElement("h1", null, "設定你的密碼"), /*#__PURE__*/React.createElement("p", null, me.name, "，第一次進來要先設一組自己的 4 碼密碼，以後都用這組登入。"), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "新密碼"), /*#__PURE__*/React.createElement("input", {
+    className: "pin",
+    type: "password",
+    value: p1,
+    autoFocus: true,
+    maxLength: 20,
+    placeholder: "••••",
+    onChange: e => setP1(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "再輸入一次"), /*#__PURE__*/React.createElement("input", {
+    className: "pin",
+    type: "password",
+    value: p2,
+    maxLength: 20,
+    placeholder: "••••",
+    onChange: e => setP2(e.target.value),
+    onKeyDown: e => e.key === "Enter" && save()
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 16
+    },
+    disabled: busy,
+    onClick: save
+  }, busy ? "設定中…" : "設定完成"), /*#__PURE__*/React.createElement("button", {
+    className: "linky center",
+    onClick: () => sb.auth.signOut()
+  }, "換人登入")), toast && /*#__PURE__*/React.createElement("div", {
+    className: "toast"
+  }, toast));
+}
+function SetupHelp() {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "gate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "box"
+  }, /*#__PURE__*/React.createElement("h1", null, "還沒設定連線"), /*#__PURE__*/React.createElement("p", null, "打開這個 HTML 檔，找到最上面的 ", /*#__PURE__*/React.createElement("code", null, "SUPABASE_URL"), " 和", " ", /*#__PURE__*/React.createElement("code", null, "SUPABASE_ANON_KEY"), "，換成你 Supabase 專案的資料。 位置在後台的 Project Settings → API。"), /*#__PURE__*/React.createElement("p", null, "anon key 本來就是要放在瀏覽器裡的公開金鑰，真正擋人的是資料庫的 RLS。 不要把 service_role key 貼進來。")));
+}
+function LoginScreen({
+  flash,
+  toast
+}) {
+  const [dir, setDir] = useState(null);
+  const [picked, setPicked] = useState(null);
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [manual, setManual] = useState(false);
+  const [mail, setMail] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const {
+          data,
+          error
+        } = await sb.from("login_directory").select("*").order("name");
+        setDir(error ? [] : data || []);
+      } catch {
+        setDir([]);
+      }
+    })();
+  }, []);
+  const doLogin = async email => {
+    if (!pw) return flash("請輸入密碼");
+    setBusy(true);
+    let r = await sb.auth.signInWithPassword({
+      email,
+      password: padPin(pw)
+    });
+    if (r.error) r = await sb.auth.signInWithPassword({
+      email,
+      password: pw
+    });
+    setBusy(false);
+    if (r.error) {
+      const m = r.error && r.error.message || "";
+      console.error("登入失敗", r.error);
+      if (m.indexOf("Invalid login") !== -1) flash("密碼不對");else if (m.indexOf("not confirmed") !== -1) flash("這個帳號還沒被確認，請管理者處理");else flash("登入失敗：" + m);
+    }
+  };
+  const groups = [{
+    label: "管理者",
+    people: (dir || []).filter(u => u.role === "admin")
+  }, {
+    label: "人員",
+    people: (dir || []).filter(u => u.role !== "admin")
+  }].filter(g => g.people.length > 0);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "gate"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "ptitle"
+  }, "📦 順道庫存管理"), picked ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "picked"
+  }, /*#__PURE__*/React.createElement("b", null, picked.name), /*#__PURE__*/React.createElement("button", {
+    className: "linky",
+    onClick: () => {
+      setPicked(null);
+      setPw("");
+    }
+  }, "換人")), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "密碼"), /*#__PURE__*/React.createElement("input", {
+    className: "pin",
+    type: "password",
+    value: pw,
+    autoFocus: true,
+    autoComplete: "current-password",
+    maxLength: 20,
+    placeholder: "••••",
+    onChange: e => setPw(e.target.value),
+    onKeyDown: e => e.key === "Enter" && doLogin(picked.email)
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 14
+    },
+    disabled: busy,
+    onClick: () => doLogin(picked.email)
+  }, busy ? "登入中…" : "登入")) : manual ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "phint"
+  }, "用完整帳號登入。"), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "帳號"), /*#__PURE__*/React.createElement("input", {
+    type: "email",
+    value: mail,
+    autoCapitalize: "none",
+    onChange: e => setMail(e.target.value),
+    placeholder: "u001@likeadream.local"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full",
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "密碼"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: pw,
+    onChange: e => setPw(e.target.value),
+    onKeyDown: e => e.key === "Enter" && doLogin(mail.trim())
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 14
+    },
+    disabled: busy,
+    onClick: () => doLogin(mail.trim())
+  }, busy ? "登入中…" : "登入"), /*#__PURE__*/React.createElement("button", {
+    className: "linky center",
+    onClick: () => setManual(false)
+  }, "回名字清單")) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("hr", {
+    className: "prule"
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "phint"
+  }, "請點選您的名字進入，輸入 4 碼密碼即可登入。"), dir === null ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "載入中…") : dir.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "還沒有啟用中的人員。", /*#__PURE__*/React.createElement("br", null), "請用完整帳號登入後到「設定 → 帳號」新增。") : groups.map(g => /*#__PURE__*/React.createElement("div", {
+    className: "pgroup",
+    key: g.label
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "glabel"
+  }, g.label), /*#__PURE__*/React.createElement("div", {
+    className: "names"
+  }, g.people.map(u => /*#__PURE__*/React.createElement("button", {
+    key: u.id,
+    onClick: () => setPicked(u)
+  }, u.name))))), dir !== null && dir.length === 0 && /*#__PURE__*/React.createElement("button", {
+    className: "btn dark wide",
+    style: {
+      marginTop: 18
+    },
+    onClick: () => setManual(true)
+  }, "🛠 用完整帳號登入")), /*#__PURE__*/React.createElement("div", {
+    className: "pfoot"
+  }, "版本 ", VERSION, "\u3000·\u3000手機可加入主畫面當 App 用")), toast && /*#__PURE__*/React.createElement("div", {
+    className: "toast"
+  }, toast));
+}
+
+/* ------------------------------------------------------------------ */
+/* 庫存                                                                */
+/* ------------------------------------------------------------------ */
+
+function StockPage({
+  db,
+  me,
+  run,
+  logIt,
+  flash,
+  reload
+}) {
+  const [edit, setEdit] = useState(null);
+  const [val, setVal] = useState("");
+  const [pending, setPending] = useState(null);
+  const doneRef = useRef(false);
+  const now = new Date();
+  const [ym, setYm] = useState(now.getFullYear() + "-" + pad(now.getMonth() + 1));
+  const [view, setView] = useState("all");
+  const [openMonth, setOpenMonth] = useState(true);
+  const parts = ym.split("-");
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const t = today();
+  const active = db.items.filter(i => i.active);
+  const shiftMonth = delta => {
+    const d = new Date(y, m - 1 + delta, 1);
+    setYm(d.getFullYear() + "-" + pad(d.getMonth() + 1));
+  };
+
+  // 每個品項一整月的逐日資料
+  const grid = useMemo(() => active.map(it => ({
+    item: it,
+    rows: buildMonth(db, it.id, y, m)
+  })), [db, y, m]);
+  const days = grid.length ? grid[0].rows : buildMonth(db, "none", y, m);
+  const locsOf = () => view === "all" ? ["factory", "store"] : [view];
+  const keyOf = (itemId, loc, date) => itemId + "|" + loc + "|" + date;
+  const writeEntry = async (itemId, loc, date, qty, type, note) => {
+    const before = balanceAt(db, itemId, loc, date);
+    await run(async () => {
+      const r = await sb.from("stock_entries").insert({
+        entry_date: date,
+        loc,
+        item_id: itemId,
+        qty,
+        type,
+        before_qty: before,
+        after_qty: before + qty,
+        note: note || null,
+        operator_id: me.id,
+        operator_name: me.name
+      });
+      if (r.error) throw r.error;
+      const it = db.items.find(i => i.id === itemId);
+      await logIt(type === "in" ? "入庫" : "盤點調整", date + "　" + LOC_NAME[loc] + "　" + (it ? it.name : "") + "　" + (qty > 0 ? "+" : "") + qty + "　（月表輸入）");
+    }, type === "in" ? "已入庫" : "已調整");
+  };
+  const commitCell = async (itemId, loc, date) => {
+    const n = Number(val);
+    setEdit(null);
+    setVal("");
+    if (!n) return;
+    if (n > 0) {
+      setPending({
+        itemId,
+        loc,
+        date,
+        qty: n
+      });
+    } else {
+      await writeEntry(itemId, loc, date, n, "adjust", "盤點校正");
+    }
+  };
+  const moveCell = (r, item) => locsOf().map(w => {
+    const v = w === "factory" ? r.fIn - r.fOut : r.sIn - r.sOut;
+    const c = w === "factory" ? "f" : "s";
+    const k = keyOf(item.id, w, r.date);
+    const on = edit === k;
+    if (on) {
+      return /*#__PURE__*/React.createElement("input", {
+        key: w,
+        className: "cellin",
+        type: "text",
+        inputMode: "text",
+        autoFocus: true,
+        value: val,
+        onChange: e => setVal(e.target.value),
+        onBlur: () => {
+          if (doneRef.current) {
+            doneRef.current = false;
+            return;
+          }
+          commitCell(item.id, w, r.date);
+        },
+        onKeyDown: e => {
+          if (e.key === "Enter") {
+            doneRef.current = true;
+            commitCell(item.id, w, r.date);
+          }
+          if (e.key === "Escape") {
+            doneRef.current = true;
+            setEdit(null);
+            setVal("");
+          }
+        }
+      });
+    }
+    return /*#__PURE__*/React.createElement("div", {
+      key: w,
+      className: "cl mv2 edit " + c + (v < 0 ? " minus" : v > 0 ? " plus" : ""),
+      onClick: () => {
+        setEdit(k);
+        setVal("");
+      },
+      title: "點一下輸入"
+    }, v === 0 ? "" : (v > 0 ? "+" : "−") + fmt(Math.abs(v)));
+  });
+  const balCell = r => locsOf().map(w => {
+    const v = w === "factory" ? r.fLeft : r.sLeft;
+    const c = w === "factory" ? "f" : "s";
+    return /*#__PURE__*/React.createElement("div", {
+      key: w,
+      className: "cl bal " + c + (v < 0 ? " neg" : "")
+    }, /*#__PURE__*/React.createElement("b", null, fmt(v)));
+  });
+  const legend = () => locsOf().map(w => /*#__PURE__*/React.createElement("div", {
+    key: w,
+    className: "cl leg " + (w === "factory" ? "f" : "s")
+  }, LOC_NAME[w]));
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "pager"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "pg",
+    onClick: () => shiftMonth(-1)
+  }, "‹ 上月"), /*#__PURE__*/React.createElement("div", {
+    className: "pgnow"
+  }, y, " 年 ", m, " 月"), /*#__PURE__*/React.createElement("button", {
+    className: "pg",
+    onClick: () => shiftMonth(1)
+  }, "下月 ›")), /*#__PURE__*/React.createElement("div", {
+    className: "pills"
+  }, [["all", "全部"], ["factory", "工廠"], ["store", "門市"]].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    className: view === id ? "on" : "",
+    onClick: () => setView(id)
+  }, label)), /*#__PURE__*/React.createElement("button", {
+    className: "pill-ghost",
+    onClick: reload
+  }, "重新整理")), /*#__PURE__*/React.createElement("section", {
+    className: "card full"
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "chead",
+    onClick: () => setOpenMonth(!openMonth)
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "mark-dot"
+  }), /*#__PURE__*/React.createElement("h3", null, y, " 年 ", m, " 月\u3000每日進出與剩餘"), /*#__PURE__*/React.createElement("span", {
+    className: "meta"
+  }, view === "all" ? "每天分進、出、餘，上排工廠、下排門市" : LOC_NAME[view] + "　每天分進、出、餘"), /*#__PURE__*/React.createElement("span", {
+    className: "chev"
+  }, openMonth ? "⌃" : "⌄")), openMonth && (active.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "還沒有品項。") : /*#__PURE__*/React.createElement("div", {
+    className: "matrix"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "grid2"
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "stick",
+    rowSpan: 2
+  }, "品項"), days.map(r => /*#__PURE__*/React.createElement("th", {
+    key: r.date,
+    colSpan: 2,
+    className: "dgrp"
+  }, mdOf(r.date), /*#__PURE__*/React.createElement("span", null, "(", weekdayOf(r.date), ")")))), /*#__PURE__*/React.createElement("tr", null, days.map(r => /*#__PURE__*/React.createElement(React.Fragment, {
+    key: r.date
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "sub3 dgrp"
+  }, "進出"), /*#__PURE__*/React.createElement("th", {
+    className: "sub3"
+  }, "庫存"))))), /*#__PURE__*/React.createElement("tbody", null, grid.map(({
+    item,
+    rows
+  }) => /*#__PURE__*/React.createElement("tr", {
+    key: item.id
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "stick l"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sinner"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "iname"
+  }, item.name), /*#__PURE__*/React.createElement("span", {
+    className: "legend"
+  }, legend()))), rows.map(r => {
+    const bad = view !== "store" && r.fLeft < 0 || view !== "factory" && r.sLeft < 0;
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: r.date
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "dgrp"
+    }, moveCell(r, item)), /*#__PURE__*/React.createElement("td", {
+      className: bad ? "badcell" : ""
+    }, balCell(r)));
+  })))))))), pending && /*#__PURE__*/React.createElement("div", {
+    className: "askmask",
+    onClick: e => e.target === e.currentTarget && setPending(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "askbox"
+  }, /*#__PURE__*/React.createElement("b", null, (db.items.find(i => i.id === pending.itemId) || {}).name), /*#__PURE__*/React.createElement("p", null, pending.date, "\u3000", LOC_NAME[pending.loc], "\u3000+", fmt(pending.qty)), /*#__PURE__*/React.createElement("div", {
+    className: "askacts"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: async () => {
+      const p = pending;
+      setPending(null);
+      await writeEntry(p.itemId, p.loc, p.date, p.qty, "in", "月表輸入");
+    }
+  }, "入庫"), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost",
+    onClick: async () => {
+      const p = pending;
+      setPending(null);
+      await writeEntry(p.itemId, p.loc, p.date, p.qty, "adjust", "盤點校正");
+    }
+  }, "盤點校正")), /*#__PURE__*/React.createElement("button", {
+    className: "linky center",
+    onClick: () => setPending(null)
+  }, "取消"))), /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, "點一下「進出」格子就能輸入。正數會問你是入庫還是盤點校正，負數直接記成盤點校正。 撥調要到左邊的撥調頁，因為它同時動工廠和門市兩邊。"));
+}
+
+/* ------------------------------------------------------------------ */
+/* 訂單                                                                */
+/* ------------------------------------------------------------------ */
+
+function OrdersPage({
+  db,
+  me,
+  run,
+  logIt,
+  flash
+}) {
+  const [editing, setEditing] = useState(null);
+  const [kw, setKw] = useState("");
+  const [locF, setLocF] = useState("all");
+  const t = today();
+  const nameOf = id => {
+    const it = db.items.find(i => i.id === id);
+    return it ? it.name : "（已刪品項）";
+  };
+  const list = useMemo(() => db.orders.filter(o => {
+    if (locF !== "all" && o.loc !== locF) return false;
+    if (kw) {
+      const hay = (o.customer + " " + (o.extNo || "") + " " + o.no).toLowerCase();
+      if (hay.indexOf(kw.toLowerCase()) === -1) return false;
+    }
+    return true;
+  }).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0), [db.orders, kw, locF]);
+  const remove = async o => {
+    const detail = o.lines.map(l => nameOf(l.itemId) + " " + l.qty).join("、");
+    if (!window.confirm("刪除 " + o.date + "　" + o.customer + "\n" + LOC_NAME[o.loc] + "｜" + detail + "\n\n庫存表會立刻把這些數量加回去。")) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("delete_order", {
+        p_order_id: o.id,
+        p_summary: o.no + "　" + o.customer + "　" + o.date + "　" + LOC_NAME[o.loc] + "　" + detail,
+        p_snapshot: o
+      });
+      if (error) throw error;
+    }, "已刪除，內容留在紀錄裡");
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "lede"
+  }, "輸入就代表會照這天出貨。不出貨就刪掉，刪除內容完整留在紀錄。"), /*#__PURE__*/React.createElement("div", {
+    className: "toolrow"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn mini",
+    onClick: () => setEditing({
+      isNew: true
+    })
+  }, "＋ 新增訂單")), /*#__PURE__*/React.createElement("div", {
+    className: "fields",
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "搜尋客人姓名"), /*#__PURE__*/React.createElement("input", {
+    value: kw,
+    onChange: e => setKw(e.target.value),
+    placeholder: "王小姐"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "出貨地點"), /*#__PURE__*/React.createElement("select", {
+    value: locF,
+    onChange: e => setLocF(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "all"
+  }, "全部"), LOCS.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l.id,
+    value: l.id
+  }, l.name))))), /*#__PURE__*/React.createElement("div", {
+    className: "card full"
+  }, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "這個條件下沒有訂單。") : /*#__PURE__*/React.createElement("div", {
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "orders"
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "寄出日"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "客戶"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "品項"), /*#__PURE__*/React.createElement("th", null, "數量"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "出貨地點"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, list.map(o => {
+    const sameYear = o.date.slice(0, 4) === today().slice(0, 4);
+    return /*#__PURE__*/React.createElement("tr", {
+      key: o.id
+    }, /*#__PURE__*/React.createElement("td", {
+      className: "l"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "odate"
+    }, mdOf(o.date)), /*#__PURE__*/React.createElement("span", {
+      className: "sub"
+    }, sameYear ? "" : o.date.slice(0, 4) + " ", "週", weekdayOf(o.date))), /*#__PURE__*/React.createElement("td", {
+      className: "l ocust"
+    }, o.customer, o.boxLabel && /*#__PURE__*/React.createElement("span", {
+      className: "sub"
+    }, o.boxLabel)), /*#__PURE__*/React.createElement("td", {
+      className: "l"
+    }, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+      key: i
+    }, nameOf(l.itemId)))), /*#__PURE__*/React.createElement("td", null, o.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      className: "big"
+    }, fmt(l.qty)))), /*#__PURE__*/React.createElement("td", {
+      className: "l"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "tag " + (o.loc === "factory" ? "f" : "s")
+    }, LOC_NAME[o.loc])), /*#__PURE__*/React.createElement("td", {
+      className: "l faint"
+    }, o.editedBy ? o.editedBy + "（改）" : o.createdBy || "—"), /*#__PURE__*/React.createElement("td", {
+      className: "oacts"
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "btn ghost mini",
+      onClick: () => setEditing(o)
+    }, "修改"), " ", /*#__PURE__*/React.createElement("button", {
+      className: "btn danger mini",
+      onClick: () => remove(o)
+    }, "刪除")));
+  }))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
+    db: db,
+    me: me,
+    run: run,
+    logIt: logIt,
+    flash: flash,
+    order: editing.isNew ? null : editing,
+    close: () => setEditing(null)
+  }));
+}
+
+/* ---------- 禮盒組成 ---------- */
+
+const CAKES = ["蜂蜜海鹽", "青檸", "蘋果伯爵"];
+const COOKIES = ["皇家伯爵", "核桃雪球", "巧克力曲奇"];
+const MONAKA = ["堅果最中餅", "莓果最中餅", "南瓜籽最中餅"];
+const BOXES = [{
+  id: "single",
+  name: "單入磅蛋糕",
+  cakes: 1,
+  yaki: false
+}, {
+  id: "yaki",
+  name: "燒菓子禮盒",
+  cakes: 1,
+  yaki: true
+}, {
+  id: "double",
+  name: "雙入磅蛋糕",
+  cakes: 2,
+  yaki: false
+}, {
+  id: "free",
+  name: "單品，不成盒",
+  cakes: 0,
+  yaki: false
+}];
+function OrderSheet({
+  db,
+  me,
+  run,
+  logIt,
+  flash,
+  order,
+  close
+}) {
+  const active = db.items.filter(i => i.active);
+  const byName = n => active.find(i => i.name === n);
+  const [customer, setCustomer] = useState(order ? order.customer : "");
+  const [date, setDate] = useState(order ? order.date : today());
+  const [loc, setLoc] = useState(order ? order.loc : "store");
+  const [busy, setBusy] = useState(false);
+  const [box, setBox] = useState("single");
+  const [cakes, setCakes] = useState([]); // 蛋糕，可重複
+  const [route, setRoute] = useState("cookie");
+  const [cookie, setCookie] = useState(null); // 手工餅乾，單選
+  const [mons, setMons] = useState([]); // 最中餅，可重複，最多兩個
+  const [boxes, setBoxes] = useState("1");
+  const [lines, setLines] = useState(order ? order.lines.map(l => ({
+    itemId: l.itemId,
+    qty: l.qty
+  })) : [{
+    itemId: active[0] ? active[0].id : "",
+    qty: ""
+  }]);
+  const editing = !!order;
+  const spec = BOXES.find(b => b.id === box) || BOXES[0];
+  const nameOf = id => {
+    const it = db.items.find(i => i.id === id);
+    return it ? it.name : "";
+  };
+  const setLine = (i, patch) => setLines(lines.map((l, k) => k === i ? Object.assign({}, l, patch) : l));
+
+  /* 點一下加一個；額度滿了再點就變成減一個 */
+  const tapMulti = (list, setList, max, name) => {
+    const count = list.filter(x => x === name).length;
+    if (list.length < max) {
+      setList(list.concat([name]));
+    } else if (count > 0) {
+      const k = list.lastIndexOf(name);
+      setList(list.slice(0, k).concat(list.slice(k + 1)));
+    }
+  };
+  const tapOne = (cur, set, name) => set(cur === name ? null : name);
+  const pickRow = (opts, list, setList, max) => /*#__PURE__*/React.createElement("div", {
+    className: "chips"
+  }, opts.map(o => {
+    const n = list.filter(x => x === o).length;
+    const full = list.length >= max;
+    return /*#__PURE__*/React.createElement("button", {
+      key: o,
+      className: (n > 0 ? "on " : "") + (full && n === 0 ? "off" : ""),
+      onClick: () => tapMulti(list, setList, max, o)
+    }, o, n > 0 && /*#__PURE__*/React.createElement("span", {
+      className: "cnt"
+    }, n));
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "picked-n"
+  }, list.length, " / ", max));
+  const pickOne = (opts, cur, set) => /*#__PURE__*/React.createElement("div", {
+    className: "chips"
+  }, opts.map(o => /*#__PURE__*/React.createElement("button", {
+    key: o,
+    className: cur === o ? "on" : "",
+    onClick: () => tapOne(cur, set, o)
+  }, o)));
+  const buildFromBox = () => {
+    const n = Math.floor(Number(boxes) || 0);
+    if (n <= 0) return {
+      err: "請填盒數"
+    };
+    if (cakes.length < spec.cakes) return {
+      err: "請選滿 " + spec.cakes + " 個蛋糕"
+    };
+    const picks = cakes.slice();
+    if (spec.yaki) {
+      if (route === "cookie") {
+        if (!cookie) return {
+          err: "請選一款手工餅乾"
+        };
+        picks.push(cookie);
+      } else {
+        if (mons.length < 2) return {
+          err: "請選滿 2 個最中餅"
+        };
+        picks.push(mons[0]);
+        picks.push(mons[1]);
+      }
+    }
+    const tally = {};
+    for (const p of picks) tally[p] = (tally[p] || 0) + 1;
+    const out = [];
+    const missing = [];
+    for (const nm of Object.keys(tally)) {
+      const it = byName(nm);
+      if (!it) {
+        missing.push(nm);
+        continue;
+      }
+      out.push({
+        itemId: it.id,
+        qty: tally[nm] * n
+      });
+    }
+    if (missing.length) return {
+      err: "品項裡找不到：" + missing.join("、") + "，請先到設定建立"
+    };
+    const detail = Object.keys(tally).map(nm => nm + (tally[nm] > 1 ? "×" + tally[nm] : "")).join("／");
+    return {
+      lines: out,
+      label: spec.name + "（" + detail + "）× " + n + " 盒"
+    };
+  };
+  const submit = async () => {
+    if (!customer.trim()) return flash("請填客人姓名");
+    let clean,
+      label = null;
+    if (editing || box === "free") {
+      clean = lines.map(l => ({
+        itemId: l.itemId,
+        qty: Number(l.qty)
+      })).filter(l => l.itemId && l.qty > 0);
+      if (!clean.length) return flash("至少要有一個品項和數量");
+      if (editing) label = order.boxLabel || null;
+    } else {
+      const r = buildFromBox();
+      if (r.err) return flash(r.err);
+      clean = r.lines;
+      label = r.label;
+    }
+    const detail = clean.map(l => nameOf(l.itemId) + " " + l.qty).join("、");
+    setBusy(true);
+    const ok = await run(async () => {
+      if (order) {
+        const before = order.customer + "　" + order.date + "　" + LOC_NAME[order.loc] + "　" + order.lines.map(l => nameOf(l.itemId) + " " + l.qty).join("、");
+        const after = customer + "　" + date + "　" + LOC_NAME[loc] + "　" + detail;
+        let r = await sb.from("orders").update({
+          customer,
+          ship_date: date,
+          loc,
+          edited_by_name: me.name,
+          edited_at: new Date().toISOString()
+        }).eq("id", order.id);
+        if (r.error) throw r.error;
+        r = await sb.from("order_lines").delete().eq("order_id", order.id);
+        if (r.error) throw r.error;
+        r = await sb.from("order_lines").insert(clean.map(l => ({
+          order_id: order.id,
+          item_id: l.itemId,
+          qty: l.qty
+        })));
+        if (r.error) throw r.error;
+        await logIt("修改訂單", order.no + "　改前：" + before + "　→　改後：" + after, {
+          before: order,
+          after: {
+            customer,
+            date,
+            loc,
+            lines: clean
+          }
+        });
+      } else {
+        const ins = await sb.from("orders").insert({
+          customer,
+          ship_date: date,
+          loc,
+          box_label: label,
+          created_by: me.id,
+          created_by_name: me.name
+        }).select().single();
+        if (ins.error) throw ins.error;
+        const r = await sb.from("order_lines").insert(clean.map(l => ({
+          order_id: ins.data.id,
+          item_id: l.itemId,
+          qty: l.qty
+        })));
+        if (r.error) throw r.error;
+        await logIt("新增訂單", ins.data.no + "　" + customer + "　" + date + "　" + LOC_NAME[loc] + "　" + (label ? label + "　→　" : "") + detail, {
+          id: ins.data.id,
+          no: ins.data.no,
+          customer,
+          date,
+          loc,
+          lines: clean,
+          label
+        });
+      }
+    }, order ? "已更新" : "已新增");
+    setBusy(false);
+    if (ok) close();
+  };
+  const preview = !editing && box !== "free" ? buildFromBox() : null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "sheet"
+  }, /*#__PURE__*/React.createElement("header", null, order ? "修改訂單" : "新增訂單"), /*#__PURE__*/React.createElement("div", {
+    className: "inner"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fields"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "客人姓名"), /*#__PURE__*/React.createElement("input", {
+    value: customer,
+    onChange: e => setCustomer(e.target.value),
+    placeholder: "王小姐"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "寄出日"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "出貨地點"), /*#__PURE__*/React.createElement("div", {
+    className: "seg"
+  }, LOCS.map(l => /*#__PURE__*/React.createElement("button", {
+    key: l.id,
+    className: loc === l.id ? "on" : "",
+    onClick: () => setLoc(l.id)
+  }, l.name))))), /*#__PURE__*/React.createElement("hr", {
+    className: "prule"
+  }), !editing && /*#__PURE__*/React.createElement("div", {
+    className: "fld full",
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "禮盒樣式"), /*#__PURE__*/React.createElement("div", {
+    className: "chips big"
+  }, BOXES.map(b => /*#__PURE__*/React.createElement("button", {
+    key: b.id,
+    className: box === b.id ? "on" : "",
+    onClick: () => {
+      setBox(b.id);
+      setCakes([]);
+      setCookie(null);
+      setMons([]);
+    }
+  }, b.name)))), !editing && box !== "free" && /*#__PURE__*/React.createElement("div", {
+    className: "boxcfg"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "蛋糕\u3000選 ", spec.cakes, " 個，可以選同一款"), pickRow(CAKES, cakes, setCakes, spec.cakes)), spec.yaki && /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "搭配"), /*#__PURE__*/React.createElement("div", {
+    className: "seg"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: route === "cookie" ? "on" : "",
+    onClick: () => setRoute("cookie")
+  }, "手工餅乾\u3000選一"), /*#__PURE__*/React.createElement("button", {
+    className: route === "monaka" ? "on" : "",
+    onClick: () => setRoute("monaka")
+  }, "最中餅\u3000選二"))), spec.yaki && route === "cookie" && /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "手工餅乾"), pickOne(COOKIES, cookie, setCookie)), spec.yaki && route === "monaka" && /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "最中餅\u3000選 2 個，可以選同一款"), pickRow(MONAKA, mons, setMons, 2)), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "盒數"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    inputMode: "numeric",
+    value: boxes,
+    onChange: e => setBoxes(e.target.value)
+  })), preview && /*#__PURE__*/React.createElement("div", {
+    className: "boxsum"
+  }, preview.err ? /*#__PURE__*/React.createElement("span", {
+    className: "warntxt"
+  }, preview.err) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("b", null, "會扣掉"), preview.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: i
+  }, nameOf(l.itemId), "\u3000", fmt(l.qty)))))), (editing || box === "free") && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "fld full",
+    style: {
+      margin: "4px 0 6px"
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "訂單品項")), lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    key: i
+  }, /*#__PURE__*/React.createElement("select", {
+    value: l.itemId,
+    onChange: e => setLine(i, {
+      itemId: e.target.value
+    })
+  }, active.map(it => /*#__PURE__*/React.createElement("option", {
+    key: it.id,
+    value: it.id
+  }, it.name))), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    inputMode: "numeric",
+    value: l.qty,
+    placeholder: "數量",
+    onChange: e => setLine(i, {
+      qty: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    disabled: lines.length === 1,
+    onClick: () => setLines(lines.filter((_, k) => k !== i))
+  }, "移除"))), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => setLines(lines.concat([{
+      itemId: active[0] ? active[0].id : "",
+      qty: ""
+    }]))
+  }, "再加一個品項"))), /*#__PURE__*/React.createElement("footer", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost",
+    onClick: close
+  }, "取消"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy,
+    onClick: submit
+  }, busy ? "儲存中…" : order ? "儲存" : "新增")));
+}
+
+/* ------------------------------------------------------------------ */
+/* 作業                                                                */
+/* ------------------------------------------------------------------ */
+
+function OpsPage({
+  db,
+  me,
+  run,
+  logIt,
+  flash
+}) {
+  const active = db.items.filter(i => i.active);
+  const [loc, setLoc] = useState("factory");
+  const [item, setItem] = useState(active[0] ? active[0].id : "");
+  const [qty, setQty] = useState("");
+  const [note, setNote] = useState("");
+  const [date, setDate] = useState(today());
+  const nameOf = id => {
+    const it = db.items.find(i => i.id === id);
+    return it ? it.name : "";
+  };
+  const before = item ? balanceAt(db, item, loc, date) : 0;
+  const n = Number(qty) || 0;
+  const to = loc === "factory" ? "store" : "factory";
+  const doTransfer = async () => {
+    if (!item) return flash("請選品項");
+    if (!(n > 0)) return flash("請填數量");
+    const bTo = balanceAt(db, item, to, date);
+    const tid = crypto.randomUUID();
+    const base = {
+      entry_date: date,
+      item_id: item,
+      operator_id: me.id,
+      operator_name: me.name
+    };
+    const ok = await run(async () => {
+      const r = await sb.from("stock_entries").insert([Object.assign({}, base, {
+        loc,
+        qty: -n,
+        type: "transfer_out",
+        before_qty: before,
+        after_qty: before - n,
+        note: note || null,
+        transfer_id: tid
+      }), Object.assign({}, base, {
+        loc: to,
+        qty: n,
+        type: "transfer_in",
+        before_qty: bTo,
+        after_qty: bTo + n,
+        note: note || null,
+        transfer_id: tid
+      })]);
+      if (r.error) throw r.error;
+      await logIt("撥調", date + "　" + nameOf(item) + "　" + LOC_NAME[loc] + " → " + LOC_NAME[to] + "　" + n + (note ? "　" + note : ""));
+    }, "撥調完成，總庫存不變");
+    if (ok) {
+      setQty("");
+      setNote("");
+    }
+  };
+  const recent = db.entries.filter(e => e.type === "transfer_out" || e.type === "transfer_in").slice().reverse().slice(0, 12);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "lede"
+  }, "撥調要在這裡做，因為它同時動工廠和門市兩邊。入庫和盤點校正直接在庫存總覽的格子輸入就好。"), /*#__PURE__*/React.createElement("div", {
+    className: "card pad"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fields"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "從哪裡出"), /*#__PURE__*/React.createElement("div", {
+    className: "seg"
+  }, LOCS.map(l => /*#__PURE__*/React.createElement("button", {
+    key: l.id,
+    className: loc === l.id ? "on" : "",
+    onClick: () => setLoc(l.id)
+  }, l.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "日期"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "品項"), /*#__PURE__*/React.createElement("select", {
+    value: item,
+    onChange: e => setItem(e.target.value)
+  }, active.map(i => /*#__PURE__*/React.createElement("option", {
+    key: i.id,
+    value: i.id
+  }, i.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "撥調數量"), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    inputMode: "numeric",
+    value: qty,
+    onChange: e => setQty(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "備註"), /*#__PURE__*/React.createElement("input", {
+    value: note,
+    onChange: e => setNote(e.target.value),
+    placeholder: "可留白"
+  }))), /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, LOC_NAME[loc], "在 ", date, " 是 ", fmt(before), n ? "　→　撥調後 " + fmt(before - n) : "", "。總庫存不變。"), n > before && /*#__PURE__*/React.createElement("p", {
+    className: "note warn"
+  }, "撥調量超過", LOC_NAME[loc], "當天的庫存，送出後會變負數。"), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 14
+    },
+    onClick: doTransfer
+  }, "撥調到", LOC_NAME[to])), /*#__PURE__*/React.createElement("h3", {
+    className: "sec"
+  }, "最近的撥調"), /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, recent.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "還沒有撥調紀錄。") : /*#__PURE__*/React.createElement("div", {
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "日期"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "品項"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "類型"), /*#__PURE__*/React.createElement("th", null, "異動"), /*#__PURE__*/React.createElement("th", null, "之後"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "誰"))), /*#__PURE__*/React.createElement("tbody", null, recent.map(e => /*#__PURE__*/React.createElement("tr", {
+    key: e.id
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l faint"
+  }, e.date), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, nameOf(e.itemId), /*#__PURE__*/React.createElement("span", {
+    className: "sub"
+  }, LOC_NAME[e.loc])), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, ENTRY_LABEL[e.type]), /*#__PURE__*/React.createElement("td", {
+    className: "big"
+  }, e.qty > 0 ? "+" : "", fmt(e.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "big"
+  }, fmt(e.after)), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, e.operator))))))));
+}
+
+/* ------------------------------------------------------------------ */
+/* 設定                                                                */
+/* ------------------------------------------------------------------ */
+
+function SettingsPage(ctx) {
+  const [tab, setTab] = useState("items");
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    className: "pg2"
+  }, "設定"), /*#__PURE__*/React.createElement("div", {
+    className: "tabs"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: tab === "items" ? "on" : "",
+    onClick: () => setTab("items")
+  }, "品項"), /*#__PURE__*/React.createElement("button", {
+    className: tab === "users" ? "on" : "",
+    onClick: () => setTab("users")
+  }, "帳號")), tab === "items" ? /*#__PURE__*/React.createElement(ItemsPanel, ctx) : /*#__PURE__*/React.createElement(UsersPanel, ctx));
+}
+function MinBox({
+  item,
+  field,
+  value,
+  run,
+  logIt
+}) {
+  const [v, setV] = useState(String(value || 0));
+  useEffect(() => {
+    setV(String(value || 0));
+  }, [value]);
+  const save = async () => {
+    const n = Math.max(0, Math.floor(Number(v) || 0));
+    if (n === (value || 0)) {
+      setV(String(value || 0));
+      return;
+    }
+    const patch = {};
+    patch[field] = n;
+    await run(async () => {
+      const r = await sb.from("items").update(patch).eq("id", item.id);
+      if (r.error) throw r.error;
+      await logIt("設定安全庫存", item.name + "　" + (field === "min_factory" ? "工廠" : "門市") + "　" + (value || 0) + " → " + n);
+    }, "已更新安全量");
+  };
+  return /*#__PURE__*/React.createElement("input", {
+    className: "minbox",
+    type: "text",
+    inputMode: "numeric",
+    value: v,
+    onChange: e => setV(e.target.value),
+    onBlur: save,
+    onKeyDown: e => e.key === "Enter" && e.currentTarget.blur()
+  });
+}
+function ItemsPanel({
+  db,
+  run,
+  logIt,
+  flash
+}) {
+  const [name, setName] = useState("");
+  const [unit, setUnit] = useState("包");
+  const add = async () => {
+    if (!name.trim()) return flash("請填品項名稱");
+    if (db.items.some(i => i.name === name.trim())) return flash("這個名稱已經有了");
+    const sku = "I" + Date.now().toString(36).toUpperCase();
+    const ok = await run(async () => {
+      const r = await sb.from("items").insert({
+        sku,
+        name: name.trim(),
+        unit: unit.trim() || "包"
+      });
+      if (r.error) throw r.error;
+      await logIt("新增品項", name.trim() + "　" + (unit.trim() || "包"));
+    }, "已新增");
+    if (ok) setName("");
+  };
+  const rename = async it => {
+    const nv = window.prompt("品項名稱", it.name);
+    if (!nv || !nv.trim() || nv.trim() === it.name) return;
+    await run(async () => {
+      const r = await sb.from("items").update({
+        name: nv.trim()
+      }).eq("id", it.id);
+      if (r.error) throw r.error;
+      await logIt("修改品項名稱", it.name + " → " + nv.trim());
+    }, "已改名");
+  };
+  const toggle = async it => {
+    await run(async () => {
+      const r = await sb.from("items").update({
+        active: !it.active
+      }).eq("id", it.id);
+      if (r.error) throw r.error;
+      await logIt(it.active ? "停用品項" : "啟用品項", it.name);
+    });
+  };
+  const removeItem = async it => {
+    if (!window.confirm("刪除 " + it.name + "？\n\n只有從來沒被用過的品項可以刪除。\n用過的請改成停用。")) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("delete_item", {
+        p_id: it.id
+      });
+      if (error) throw error;
+      await logIt("刪除品項", it.name);
+    }, "已刪除 " + it.name);
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "lede"
+  }, "單位一律用包。安全量填 0 代表不管它，填了之後 ", LOW_DAYS, " 天內跌破會在登入時提醒。 已經用過的品項不能刪除，改成停用就好。"), /*#__PURE__*/React.createElement("div", {
+    className: "card pad",
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fields"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "品項名稱"), /*#__PURE__*/React.createElement("input", {
+    value: name,
+    onChange: e => setName(e.target.value),
+    placeholder: "蔓越莓餅乾"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "單位"), /*#__PURE__*/React.createElement("input", {
+    value: unit,
+    onChange: e => setUnit(e.target.value)
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 12
+    },
+    onClick: add
+  }, "新增品項")), /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "品項"), /*#__PURE__*/React.createElement("th", null, "工廠"), /*#__PURE__*/React.createElement("th", null, "安全量"), /*#__PURE__*/React.createElement("th", null, "門市"), /*#__PURE__*/React.createElement("th", null, "安全量"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, db.items.map(it => /*#__PURE__*/React.createElement("tr", {
+    key: it.id
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, it.name, /*#__PURE__*/React.createElement("span", {
+    className: "sub"
+  }, it.active ? it.unit : "已停用")), /*#__PURE__*/React.createElement("td", {
+    className: "big f"
+  }, fmt(currentQty(db, it.id, "factory"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(MinBox, {
+    item: it,
+    field: "min_factory",
+    value: it.minFactory,
+    run: run,
+    logIt: logIt
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "big s"
+  }, fmt(currentQty(db, it.id, "store"))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(MinBox, {
+    item: it,
+    field: "min_store",
+    value: it.minStore,
+    run: run,
+    logIt: logIt
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "oacts"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => rename(it)
+  }, "改名"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => toggle(it)
+  }, it.active ? "停用" : "啟用"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn danger mini",
+    onClick: () => removeItem(it)
+  }, "刪除"))))))));
+}
+function UsersPanel({
+  db,
+  me,
+  run,
+  logIt,
+  flash,
+  reload
+}) {
+  const [pw1, setPw1] = useState("");
+  const [nName, setNName] = useState("");
+  const [nPw, setNPw] = useState("");
+  const [nRole, setNRole] = useState("staff");
+  const [busy, setBusy] = useState(false);
+  const [handout, setHandout] = useState(null);
+  const isAdmin = me.role === "admin";
+  const changePw = async () => {
+    if (pw1.length < 4) return flash("新密碼至少 4 碼");
+    const {
+      error
+    } = await sb.auth.updateUser({
+      password: padPin(pw1)
+    });
+    if (error) return flash("改不了：" + error.message);
+    setPw1("");
+    flash("密碼已更新");
+  };
+  const addPerson = async () => {
+    if (!nName.trim()) return flash("請填姓名");
+    if (nPw.length < 4) return flash("密碼至少 4 碼");
+    setBusy(true);
+    try {
+      const {
+        error
+      } = await sb.rpc("create_staff", {
+        p_name: nName.trim(),
+        p_pin: nPw,
+        p_role: nRole
+      });
+      if (error) throw error;
+      await logIt("新增人員", nName.trim() + "　" + (nRole === "admin" ? "管理者" : "一般"));
+      setHandout({
+        name: nName.trim(),
+        pin: nPw
+      });
+      setNName("");
+      setNPw("");
+      await reload();
+    } catch (e) {
+      console.error(e);
+      flash("建立失敗：" + (e && e.message || ""));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const resetPin = async u => {
+    const np = window.prompt("幫 " + u.name + " 設定新密碼，至少 4 碼");
+    if (!np) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("set_staff_pin", {
+        p_user: u.id,
+        p_pin: np
+      });
+      if (error) throw error;
+      await logIt("重設密碼", u.name);
+    }, "密碼已重設");
+  };
+  const removePerson = async u => {
+    if (u.id === me.id) return flash("不能刪除自己");
+    if (!window.confirm("刪除 " + u.name + "？\n\n他就再也不能登入了。\n他做過的庫存異動和操作紀錄會保留，上面的名字也還在。")) return;
+    await run(async () => {
+      const {
+        error
+      } = await sb.rpc("delete_staff", {
+        p_user: u.id
+      });
+      if (error) throw error;
+      await logIt("刪除人員", u.name);
+    }, "已刪除 " + u.name);
+  };
+  const rename = async u => {
+    const nv = window.prompt("這個人在紀錄上顯示的名字", u.name);
+    if (!nv || !nv.trim()) return;
+    await run(async () => {
+      const r = await sb.from("app_users").update({
+        name: nv.trim()
+      }).eq("id", u.id);
+      if (r.error) throw r.error;
+      await logIt("修改姓名", u.name + " → " + nv.trim());
+    }, "已更新");
+  };
+  const setRole = async u => {
+    const next = u.role === "admin" ? "staff" : "admin";
+    await run(async () => {
+      const r = await sb.from("app_users").update({
+        role: next
+      }).eq("id", u.id);
+      if (r.error) throw r.error;
+      await logIt("修改身分", u.name + " → " + (next === "admin" ? "管理者" : "一般"));
+    });
+  };
+  const toggle = async u => {
+    if (u.id === me.id) return flash("不能停用自己");
+    await run(async () => {
+      const r = await sb.from("app_users").update({
+        active: !u.active
+      }).eq("id", u.id);
+      if (r.error) throw r.error;
+      await logIt(u.active ? "停用帳號" : "啟用帳號", u.name);
+    }, u.active ? "已停用" : "已啟用");
+  };
+  const pending = db.users.filter(u => !u.active);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "lede"
+  }, "登入才能新增和修改，每個動作都會記下是誰做的。停用的人不會出現在登入頁，也讀不到任何資料。"), isAdmin && pending.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "alertbox"
+  }, /*#__PURE__*/React.createElement("b", null, "有 ", pending.length, " 個帳號還沒啟用"), /*#__PURE__*/React.createElement("ul", null, pending.map(u => /*#__PURE__*/React.createElement("li", {
+    key: u.id
+  }, u.name)))), isAdmin && /*#__PURE__*/React.createElement("section", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "chead",
+    style: {
+      cursor: "default"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "mark-dot"
+  }), /*#__PURE__*/React.createElement("h3", null, "新增人員")), /*#__PURE__*/React.createElement("div", {
+    className: "pad"
+  }, handout && /*#__PURE__*/React.createElement("div", {
+    className: "handout"
+  }, /*#__PURE__*/React.createElement("b", null, handout.name, " 的臨時密碼是 ", handout.pin), /*#__PURE__*/React.createElement("div", null, "把它給本人。他第一次登入後，系統會要求他改成自己的 4 碼。"), /*#__PURE__*/React.createElement("button", {
+    className: "linky",
+    onClick: () => setHandout(null)
+  }, "知道了")), /*#__PURE__*/React.createElement("div", {
+    className: "fields"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "姓名，紀錄上顯示這個"), /*#__PURE__*/React.createElement("input", {
+    value: nName,
+    autoComplete: "off",
+    onChange: e => setNName(e.target.value),
+    placeholder: "陳阿明"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "臨時密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: nPw,
+    autoComplete: "new-password",
+    onChange: e => setNPw(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "身分"), /*#__PURE__*/React.createElement("div", {
+    className: "seg"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: nRole === "staff" ? "on" : "",
+    onClick: () => setNRole("staff")
+  }, "一般，可以 KEY 單和庫存"), /*#__PURE__*/React.createElement("button", {
+    className: nRole === "admin" ? "on" : "",
+    onClick: () => setNRole("admin")
+  }, "管理者，多了開帳號")))), /*#__PURE__*/React.createElement("button", {
+    className: "btn wide",
+    style: {
+      marginTop: 13
+    },
+    disabled: busy,
+    onClick: addPerson
+  }, busy ? "建立中…" : "建立帳號"), /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, "這組密碼只是臨時的，他第一次登入後系統會要求他自己設一組。 忘記密碼就按下面那張表的「重設密碼」，一樣是給臨時碼。"))), /*#__PURE__*/React.createElement("section", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "chead",
+    style: {
+      cursor: "default"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "mark-dot"
+  }), /*#__PURE__*/React.createElement("h3", null, "改我的密碼")), /*#__PURE__*/React.createElement("div", {
+    className: "pad"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "新密碼，4 碼就好"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: pw1,
+    autoComplete: "new-password",
+    onChange: e => setPw1(e.target.value)
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost wide",
+    style: {
+      marginTop: 12
+    },
+    onClick: changePw
+  }, "更新密碼"))), /*#__PURE__*/React.createElement("section", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("header", {
+    className: "chead",
+    style: {
+      cursor: "default"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "mark-dot"
+  }), /*#__PURE__*/React.createElement("h3", null, "人員"), /*#__PURE__*/React.createElement("span", {
+    className: "meta"
+  }, db.users.length, " 人")), /*#__PURE__*/React.createElement("div", {
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "姓名"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "身分"), isAdmin && /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, db.users.map(u => /*#__PURE__*/React.createElement("tr", {
+    key: u.id
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, u.name, u.id === me.id && /*#__PURE__*/React.createElement("span", {
+    className: "faint"
+  }, "（你）"), !u.active && /*#__PURE__*/React.createElement("span", {
+    className: "sub"
+  }, "已停用")), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, u.role === "admin" ? /*#__PURE__*/React.createElement("span", {
+    className: "tag admin"
+  }, "管理者") : "一般"), isAdmin && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => rename(u)
+  }, "改名"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => resetPin(u)
+  }, "重設密碼"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => setRole(u)
+  }, u.role === "admin" ? "降為一般" : "設為管理者"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => toggle(u)
+  }, u.active ? "停用" : "啟用"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn danger mini",
+    onClick: () => removePerson(u)
+  }, "刪除")))))))), !isAdmin && /*#__PURE__*/React.createElement("p", {
+    className: "note"
+  }, "要新增人員或改別人的資料，請管理者處理。"));
+}
+
+/* ------------------------------------------------------------------ */
+/* 紀錄                                                                */
+/* ------------------------------------------------------------------ */
+
+function LogsPage({
+  db
+}) {
+  const [tab, setTab] = useState("entries");
+  const [who, setWho] = useState("all");
+  const nameOf = id => {
+    const it = db.items.find(i => i.id === id);
+    return it ? it.name : "（已刪品項）";
+  };
+  const entries = useMemo(() => db.entries.slice().reverse().filter(e => who === "all" || e.userId === who), [db.entries, who]);
+  const logs = useMemo(() => db.logs.filter(l => who === "all" || l.userId === who), [db.logs, who]);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    className: "pg2"
+  }, "紀錄"), /*#__PURE__*/React.createElement("p", {
+    className: "lede"
+  }, "庫存對不起來的時候從這裡查。刪掉的訂單內容完整留在操作紀錄。"), /*#__PURE__*/React.createElement("div", {
+    className: "fields",
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld"
+  }, /*#__PURE__*/React.createElement("label", null, "只看某個人做的"), /*#__PURE__*/React.createElement("select", {
+    value: who,
+    onChange: e => setWho(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "all"
+  }, "全部人"), db.users.map(u => /*#__PURE__*/React.createElement("option", {
+    key: u.id,
+    value: u.id
+  }, u.name))))), /*#__PURE__*/React.createElement("div", {
+    className: "tabs"
+  }, [["entries", "庫存異動"], ["ops", "操作紀錄"]].map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    className: tab === id ? "on" : "",
+    onClick: () => setTab(id)
+  }, label))), /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, tab === "entries" ? entries.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "沒有符合的庫存異動。") : /*#__PURE__*/React.createElement("div", {
+    className: "scroll"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "時間"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "品項"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "類型"), /*#__PURE__*/React.createElement("th", null, "異動"), /*#__PURE__*/React.createElement("th", null, "前"), /*#__PURE__*/React.createElement("th", null, "後"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "誰"), /*#__PURE__*/React.createElement("th", {
+    className: "l"
+  }, "備註"))), /*#__PURE__*/React.createElement("tbody", null, entries.map(e => /*#__PURE__*/React.createElement("tr", {
+    key: e.id
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "l faint"
+  }, e.ts), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, nameOf(e.itemId), /*#__PURE__*/React.createElement("span", {
+    className: "sub"
+  }, LOC_NAME[e.loc])), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, ENTRY_LABEL[e.type]), /*#__PURE__*/React.createElement("td", {
+    className: "big"
+  }, e.qty > 0 ? "+" : "", fmt(e.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "faint"
+  }, fmt(e.before)), /*#__PURE__*/React.createElement("td", {
+    className: "big"
+  }, fmt(e.after)), /*#__PURE__*/React.createElement("td", {
+    className: "l"
+  }, e.operator), /*#__PURE__*/React.createElement("td", {
+    className: "l faint"
+  }, e.note)))))) : logs.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty"
+  }, "沒有符合的操作紀錄。") : /*#__PURE__*/React.createElement("div", {
+    className: "olist"
+  }, logs.map(l => /*#__PURE__*/React.createElement("div", {
+    className: "ord",
+    key: l.id,
+    style: {
+      display: "block"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "baseline",
+      marginBottom: 3
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      fontSize: 13.5
+    }
+  }, l.action), /*#__PURE__*/React.createElement("span", {
+    className: "wd",
+    style: {
+      fontWeight: 600
+    }
+  }, l.operator), /*#__PURE__*/React.createElement("span", {
+    className: "wd",
+    style: {
+      marginLeft: "auto",
+      color: "#a8b0b7"
+    }
+  }, l.ts)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#67727e",
+      lineHeight: 1.6
+    }
+  }, l.summary))))));
+}
+ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
+</script>
+</body>
+</html>
