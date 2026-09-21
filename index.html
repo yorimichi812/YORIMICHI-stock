@@ -23,10 +23,10 @@ button{font:inherit;color:inherit}
 
 /* 選擇頁 */
 .home{height:100%;overflow:auto;display:grid;place-items:center;padding:32px 20px}
-.home-inner{width:min(760px,100%)}
+.home-inner{width:min(980px,100%)}
 .home h1{font-size:clamp(34px,6vw,52px);letter-spacing:.12em;margin:0 0 8px;font-weight:700;color:var(--green)}
 .home p.lead{margin:0 0 36px;color:var(--soft);font-size:16px}
-.entries{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.entries{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .entry{display:flex;flex-direction:column;align-items:flex-start;gap:10px;text-align:left;padding:28px 26px 26px;border:1px solid var(--rule);border-radius:16px;background:var(--card);cursor:pointer;min-height:180px;transition:border-color .15s ease, transform .15s ease}
 .entry:hover{border-color:var(--green);transform:translateY(-2px)}
 .entry .mark{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:var(--sand);color:var(--green)}
@@ -44,7 +44,7 @@ button{font:inherit;color:inherit}
 .views{position:relative;height:calc(100% - var(--bar))}
 .views iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--cream)}
 
-@media (max-width:600px){
+@media (max-width:800px){
   .entries{grid-template-columns:1fr}
   .entry{min-height:0}
   .bar{gap:8px;padding:0 8px 0 12px}
@@ -61,15 +61,20 @@ button{font:inherit;color:inherit}
     <h1>順道菓子店</h1>
     <p class="lead">選擇要進入的系統</p>
     <div class="entries">
+      <button class="entry" type="button" data-go="orders">
+        <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="1.5"/><path d="M3 9h18M8 4v17M3 14h18"/></svg></span>
+        <h2>出貨表</h2>
+        <span class="desc">每天的寄出與店取訂單、禮盒盒數，以及內容物和包材庫存</span>
+      </button>
       <button class="entry" type="button" data-go="stock">
         <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 8l9-5 9 5v10l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v10"/></svg></span>
-        <h2>庫存</h2>
+        <h2>門市/工廠撥調</h2>
         <span class="desc">門市與工廠的庫存、訂單、入庫、調撥和盤點</span>
       </button>
       <button class="entry" type="button" data-go="boxes">
         <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="9" width="18" height="12" rx="1.5"/><path d="M2 6h20v3H2zM12 6v15"/><path d="M12 6c-1.5-3-5-3.5-5-1.2C7 6 12 6 12 6zM12 6c1.5-3 5-3.5 5-1.2C17 6 12 6 12 6z"/></svg></span>
-        <h2>禮盒撥調</h2>
-        <span class="desc">活動禮盒的總數，以及分配給各通路的盒數</span>
+        <h2>設計部檔期禮盒</h2>
+        <span class="desc">檔期禮盒的總數，以及分配給各通路的盒數</span>
       </button>
     </div>
   </div>
@@ -79,8 +84,9 @@ button{font:inherit;color:inherit}
   <nav class="bar" aria-label="系統切換">
     <button class="brand" type="button" data-go="home" title="回選擇頁">順道菓子店</button>
     <div class="tabs" role="tablist">
-      <button class="tab" type="button" role="tab" id="tab-stock" data-go="stock" aria-selected="false">庫存</button>
-      <button class="tab" type="button" role="tab" id="tab-boxes" data-go="boxes" aria-selected="false">禮盒撥調</button>
+      <button class="tab" type="button" role="tab" id="tab-orders" data-go="orders" aria-selected="false">出貨表</button>
+      <button class="tab" type="button" role="tab" id="tab-stock" data-go="stock" aria-selected="false">門市/工廠撥調</button>
+      <button class="tab" type="button" role="tab" id="tab-boxes" data-go="boxes" aria-selected="false">設計部檔期禮盒</button>
     </div>
   </nav>
   <div class="views" id="views"></div>
@@ -90,8 +96,9 @@ button{font:inherit;color:inherit}
 // 兩個系統各自是獨立的網頁，放在分頁裡。第一次點進去才載入，
 // 之後切換分頁只是隱藏或顯示，登入狀態和畫面都會保留。
 const APPS = {
-  stock: { src: "stock.html", title: "庫存" },
-  boxes: { src: "boxes.html", title: "禮盒撥調" }
+  orders: { src: "orders.html", title: "出貨表" },
+  stock: { src: "stock.html", title: "門市/工廠撥調" },
+  boxes: { src: "boxes.html", title: "設計部檔期禮盒" }
 };
 const frames = {};
 
@@ -121,6 +128,13 @@ function go(key) {
   document.title = app.title + "｜順道菓子店";
   frames[key].focus();
 }
+
+// 出貨表和門市/工廠撥調共用帳號：出貨表登入或登出後，重新載入已開啟的門市/工廠撥調分頁
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== "auth-changed") return;
+  const f = frames.stock;
+  if (f) f.src = APPS.stock.src + "?v=" + Date.now();
+});
 
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-go]");
