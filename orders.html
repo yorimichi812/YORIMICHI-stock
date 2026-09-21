@@ -58,6 +58,7 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .nav button{border:0;background:none;padding:9px 12px;border-radius:7px;cursor:pointer;color:var(--soft);font-weight:500;text-align:left;font-size:14px}
 .nav button:hover{color:var(--ink);background:#f1eee6}
 .nav button.on{background:var(--green);color:#fff}
+.nav-sep{border:0;border-top:1px solid var(--rule);margin:8px 4px;width:calc(100% - 8px)}
 .side-foot{margin-top:auto;padding:12px 8px 0;border-top:1px solid var(--rule);display:flex;flex-direction:column;align-items:flex-start;gap:6px;font-size:13px}
 .who{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .role{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--green-soft);color:var(--green)}
@@ -234,9 +235,9 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const ROLE_NAME = { admin: "管理者", cs: "客服", packer: "包裝部", kitchen: "內場" };
 const VIEWS = [
-  { key: "sheet", label: "出貨表", roles: ["admin", "cs", "packer"] },
+  { key: "sheet", label: "出貨表", roles: ["admin", "cs", "packer"], main: true },
+  { key: "stock", label: "庫存表", roles: ["admin", "cs", "packer", "kitchen"], main: true },
   { key: "stats", label: "月統計", roles: ["admin", "cs", "packer"] },
-  { key: "stock", label: "庫存表", roles: ["admin", "cs", "packer", "kitchen"] },
   { key: "settings", label: "設定", roles: ["admin", "cs"] },
   { key: "logs", label: "紀錄", roles: ["admin", "cs"] },
   { key: "people", label: "人員", roles: ["admin"] }
@@ -484,8 +485,10 @@ async function loadData(force) {
 
 /* ---------------- 畫面框架 ---------------- */
 function renderNav() {
-  $("#nav").innerHTML = VIEWS.filter(v => v.roles.includes(role()))
-    .map(v => `<button type="button" data-view="${v.key}" class="${S.view === v.key ? "on" : ""}">${v.label}</button>`).join("");
+  const btn = v => `<button type="button" data-view="${v.key}" class="${S.view === v.key ? "on" : ""}">${v.label}</button>`;
+  const mine = VIEWS.filter(v => v.roles.includes(role()));
+  const top = mine.filter(v => v.main), rest = mine.filter(v => !v.main);
+  $("#nav").innerHTML = top.map(btn).join("") + (top.length && rest.length ? `<hr class="nav-sep">` : "") + rest.map(btn).join("");
 }
 function renderBar() {
   const monthViews = ["sheet", "stats", "stock"];
