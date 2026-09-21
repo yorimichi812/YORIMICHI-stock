@@ -50,32 +50,34 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .names button:hover{border-color:var(--green);background:var(--green-soft)}
 .gate .err{color:var(--alert);font-size:13px;min-height:20px;margin:8px 0}
 
-/* 外框 */
-.app{display:flex;flex-direction:column;height:100%}
-.top{display:flex;align-items:center;gap:14px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--rule);flex-wrap:wrap}
-.top h1{font-size:17px;margin:0;color:var(--green);letter-spacing:.06em}
-.nav{display:flex;gap:2px}
-.nav button{border:0;background:none;padding:6px 12px;border-radius:7px;cursor:pointer;color:var(--soft);font-weight:500}
+/* 外框：左側分頁欄、上方工具列、中間內容、下方月份列 */
+.app{display:grid;grid-template-columns:128px 1fr;grid-template-rows:auto 1fr auto;height:100%}
+.side{grid-row:1 / 4;grid-column:1;background:#fff;border-right:1px solid var(--rule);display:flex;flex-direction:column;padding:14px 8px 12px}
+.side h1{font-size:17px;margin:0 8px 14px;color:var(--green);letter-spacing:.06em}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav button{border:0;background:none;padding:9px 12px;border-radius:7px;cursor:pointer;color:var(--soft);font-weight:500;text-align:left;font-size:14px}
 .nav button:hover{color:var(--ink);background:#f1eee6}
 .nav button.on{background:var(--green);color:#fff}
-.who{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px}
+.side-foot{margin-top:auto;padding:12px 8px 0;border-top:1px solid var(--rule);display:flex;flex-direction:column;align-items:flex-start;gap:6px;font-size:13px}
+.who{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .role{font-size:11px;padding:1px 8px;border-radius:999px;background:var(--green-soft);color:var(--green)}
-.sync{font-size:12px;color:var(--soft);display:flex;align-items:center;gap:6px}
+.top{grid-column:2;display:flex;align-items:center;gap:12px;padding:6px 16px;min-height:44px;background:var(--cream);border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.sync{font-size:12px;color:var(--soft);display:flex;align-items:center;gap:6px;margin-left:auto}
 .sync i{width:7px;height:7px;border-radius:50%;background:#3E9B6E;display:inline-block}
 .sync.bad{color:var(--alert)} .sync.bad i{background:var(--alert)}
 
-.bar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--rule);background:var(--cream);flex-wrap:wrap}
+.bar{grid-column:2;display:flex;align-items:center;gap:8px;padding:6px 16px;border-top:1px solid var(--rule);background:#fff;flex-wrap:wrap}
 .months{display:flex;gap:4px;flex-wrap:wrap}
 .months button{border:1px solid #cfc9b9;background:#fff;border-radius:7px;padding:4px 10px;cursor:pointer;font-size:13px;font-variant-numeric:tabular-nums}
 .months button.on{background:var(--green);border-color:var(--green);color:#fff}
 .months button.now{font-weight:700}
 .jump{display:flex;align-items:center;gap:6px;margin-left:6px}
 .jump input{height:30px;font-size:13px}
-.tools{display:flex;align-items:center;gap:6px;margin-left:auto}
+.tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .tools .count{font-size:13px;color:var(--soft);margin-right:4px}
 .swatch-y{display:inline-block;width:10px;height:10px;background:var(--yellow);border:1px solid #d8c95a;border-radius:2px}
 
-.body{flex:1;min-height:0;position:relative}
+.body{grid-column:2;min-height:0;position:relative}
 .scroll{position:absolute;inset:0;overflow:auto}
 .page{padding:20px 24px 60px;max-width:1100px}
 .page h2{font-size:18px;margin:0 0 10px}
@@ -88,8 +90,6 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .week .day:first-child{border-left:3px solid var(--grid-strong)}
 .dh{height:26px;display:flex;align-items:center;justify-content:center;font-weight:700;background:#fdf1d6;border-bottom:1px solid var(--grid);font-size:13px;position:sticky;top:0;z-index:3}
 .day.sun .dh{background:var(--sun-head);color:#fff}
-.day.sun{background:var(--sun)}
-.day.sun .gsec{background:#f4d9d4}
 table.t{border-collapse:collapse;table-layout:fixed;font-size:12.5px}
 table.t td,table.t th{border:1px dotted var(--grid);height:22px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
 table.t th{font-weight:500;font-size:11.5px;color:#4a514b;background:rgba(0,0,0,.025);text-align:center}
@@ -107,7 +107,7 @@ tr.r.sel td{box-shadow:inset 0 0 0 999px rgba(47,111,208,.12)}
 td.miss{outline:2px solid var(--miss);outline-offset:-2px}
 td.cur{outline:2px solid var(--cur) !important;outline-offset:-2px;z-index:2}
 td[data-peer]{outline:2px solid var(--peer);outline-offset:-2px}
-td[data-peer]::after{content:attr(data-peer);position:absolute;right:0;top:0;background:var(--peer);color:#fff;font-size:10px;line-height:12px;padding:0 3px;border-radius:0 0 0 3px;font-weight:500}
+.peer-tag{position:absolute;z-index:15;background:var(--peer);color:#fff;font-size:11px;line-height:15px;padding:0 5px;border-radius:4px 4px 4px 0;font-weight:500;pointer-events:none;white-space:nowrap}
 tr.new td{color:var(--faint)}
 tr.new td.nm{font-style:italic}
 .grip{display:inline-block;width:10px;margin-right:3px;cursor:grab;color:var(--faint);opacity:0;user-select:none}
@@ -128,7 +128,9 @@ table.st{border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout
 table.st th,table.st td{border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);height:26px;padding:0 6px;white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;position:relative}
 table.st thead th{background:#fbfaf6;font-weight:500;color:#4a514b;text-align:center;position:sticky;z-index:4}
 table.st thead tr:first-child th{top:0;height:26px}
-table.st thead tr:nth-child(2) th{top:26px;font-size:11.5px}
+table.st thead tr:nth-child(2) th{top:26px;height:22px;font-size:12px}
+table.st thead tr:nth-child(3) th{top:48px;font-size:11.5px}
+table.st thead th.wd{font-weight:500}
 table.st .name{position:sticky;left:0;z-index:3;text-align:left;background:inherit;min-width:170px;border-right:2px solid var(--grid-strong)}
 table.st thead .name{z-index:6;background:#fbfaf6}
 table.st .open{border-right:2px solid var(--grid-strong);color:var(--soft)}
@@ -185,6 +187,7 @@ table.plain tr.off td{color:var(--faint)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;z-index:200}
 
 @media (max-width:700px){
+  .app{grid-template-columns:96px 1fr}
   .top,.bar{padding:6px 10px}
   .row2{grid-template-columns:1fr}
 }
@@ -200,19 +203,23 @@ table.plain tr.off td{color:var(--faint)}
 </section>
 
 <div class="app" id="app" hidden>
-  <header class="top">
+  <aside class="side">
     <h1>出貨表</h1>
     <nav class="nav" id="nav"></nav>
+    <div class="side-foot">
+      <div class="who"><span id="who-name"></span><span class="role" id="who-role"></span></div>
+      <button class="btn link" type="button" data-a="logout">登出</button>
+    </div>
+  </aside>
+  <header class="top">
+    <div class="tools" id="tools"></div>
     <div class="sync" id="sync"><i></i><span id="sync-text">連線中</span></div>
-    <div class="who"><span id="who-name"></span><span class="role" id="who-role"></span>
-      <button class="btn link" type="button" data-a="logout">登出</button></div>
   </header>
-  <div class="bar" id="bar" hidden>
+  <div class="body"><div class="scroll" id="scroll"><div id="view"></div></div></div>
+  <footer class="bar" id="bar" hidden>
     <div class="months" id="months"></div>
     <label class="jump"><span class="muted" style="font-size:12px">跳到</span><input type="month" id="jump"></label>
-    <div class="tools" id="tools"></div>
-  </div>
-  <div class="body"><div class="scroll" id="scroll"><div id="view"></div></div></div>
+  </footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -417,7 +424,7 @@ function startSync() {
       for (const k in st) { if (k === S.me.id) continue; for (const p of st[k]) if (p.cell) (map[p.cell] = map[p.cell] || []).push(p.name); }
       S.presence = map; paintPresence();
     })
-    .subscribe(status => { if (status === "SUBSCRIBED") trackPresence(null); });
+    .subscribe(status => { if (status === "SUBSCRIBED") trackPresence(S.cur); });
   S.timer = setInterval(() => refresh(), POLL_MS);
 }
 function stopSync() {
@@ -483,7 +490,7 @@ function renderNav() {
 function renderBar() {
   const monthViews = ["sheet", "stats", "stock"];
   $("#bar").hidden = !monthViews.includes(S.view);
-  if ($("#bar").hidden) return;
+  if ($("#bar").hidden) { $("#tools").innerHTML = ""; return; }
   const now = S.today.slice(0, 7);
   const list = []; for (let k = -1; k <= 6; k++) list.push(addMonths(now, k));
   if (!list.includes(S.month)) list.push(S.month);
@@ -524,7 +531,7 @@ function monthBoxes(ym) {
 const tagName = id => { const t = S.cfg.tags.find(x => x.id === id); return t ? t.name : ""; };
 
 /* =================== 出貨表 =================== */
-const W = { kd: 32, nm: 128, it: 36, tg: 60, cd: 26, bx: 44 };
+const W = { kd: 38, nm: 128, it: 36, tg: 60, cd: 26, bx: 70 };
 function renderSheet() {
   const ym = S.month, n = daysIn(ym);
   const items = monthItems(ym), boxes = monthBoxes(ym);
@@ -606,7 +613,18 @@ function paintCursor() {
 }
 function paintPresence() {
   document.querySelectorAll("td[data-peer]").forEach(t => t.removeAttribute("data-peer"));
-  for (const k in S.presence) { const c = cellOf(k); if (c) c.setAttribute("data-peer", S.presence[k].join("、")); }
+  document.querySelectorAll(".peer-tag").forEach(t => t.remove());
+  const host = $("#scroll"); if (!host) return;
+  const hr = host.getBoundingClientRect();
+  for (const k in S.presence) {
+    const c = cellOf(k); if (!c) continue;
+    c.setAttribute("data-peer", "");
+    const cr = c.getBoundingClientRect();
+    const t = document.createElement("div"); t.className = "peer-tag"; t.textContent = S.presence[k].join("、");
+    t.style.left = (cr.left - hr.left + host.scrollLeft) + "px";
+    t.style.top = (cr.top - hr.top + host.scrollTop - 15) + "px";
+    host.appendChild(t);
+  }
 }
 
 function orderValue(o, f) {
@@ -628,7 +646,7 @@ async function setCur(k, opts = {}) {
     const stop = await checkIncomplete();
     if (stop) return;
   }
-  S.cur = k; paintCursor();
+  S.cur = k; paintCursor(); trackPresence(k);
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "nearest", inline: "nearest" });
   arm(k);
 }
@@ -640,7 +658,7 @@ async function checkIncomplete() {
   if (!miss.length) return false;
   await alertBox(`「${o.name}」還沒選${miss.join("和")}，請補選。`, "還沒填完");
   const k = `w|${o.id}|${!o.kind ? "kind" : "card"}`;
-  S.cur = k; paintCursor();
+  S.cur = k; paintCursor(); trackPresence(k);
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "nearest", inline: "nearest" });
   arm(k);
   return true;
@@ -685,7 +703,7 @@ function placeEditor() {
   const k = S.edit ? S.edit.key : S.armed;
   const c = k && cellOf(k);
   if (!c) {
-    if (S.edit) { S.edit = null; trackPresence(null); }
+    if (S.edit) { S.edit = null; trackPresence(S.cur); }
     S.armed = null; e.hidden = true; return;
   }
   const host = $("#scroll"), hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
@@ -747,14 +765,14 @@ function editorKey(e) {
 }
 function cancelEdit() {
   if (!S.edit) return;
-  const k = S.edit.key; S.edit.closing = true; S.edit = null; trackPresence(null);
+  const k = S.edit.key; S.edit.closing = true; S.edit = null; trackPresence(S.cur);
   arm(k);
 }
 async function commitEdit(move) {
   if (!S.edit || S.edit.closing) return;
   const ed = S.edit; ed.closing = true;
   const raw = $("#editor").value.trim();
-  S.edit = null; trackPresence(null);
+  S.edit = null; trackPresence(S.cur);
   const e = $("#editor"); e.value = ""; e.classList.add("armed");
   const p = parseKey(ed.key);
   let ok = true;
@@ -777,7 +795,7 @@ async function saveName(p, ed, raw) {
       const id = await call("ship_order_create", { p_date: p.date, p_name: raw });
       notify(); await refresh();
       S.touched = id;
-      S.cur = `w|${id}|kind`; paintCursor();
+      S.cur = `w|${id}|kind`; paintCursor(); trackPresence(S.cur);
     } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); return false; }
     return "created";
   }
@@ -877,7 +895,7 @@ function openMenu(k) {
   m.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; m.style.top = (cr.bottom - hr.top + host.scrollTop + 2) + "px";
   const cur = orderValue(o, p.f);
   m.querySelectorAll("button").forEach(b => b.onclick = async () => {
-    const x = opts[Number(b.dataset.i)]; closeMenu(); trackPresence(null);
+    const x = opts[Number(b.dataset.i)]; closeMenu(); trackPresence(S.cur);
     if (x.v !== cur) await saveField(o.id, p.f, cur, x.v, o.ship_date);
     arm(S.cur);
   });
@@ -887,7 +905,7 @@ function openMenu(k) {
     const bs = [...m.querySelectorAll("button:not(:disabled)")]; const i = bs.indexOf(document.activeElement);
     if (e.key === "ArrowDown") { e.preventDefault(); (bs[i + 1] || bs[0]).focus(); }
     if (e.key === "ArrowUp") { e.preventDefault(); (bs[i - 1] || bs[bs.length - 1]).focus(); }
-    if (e.key === "Escape") { e.preventDefault(); closeMenu(); trackPresence(null); arm(S.cur); }
+    if (e.key === "Escape") { e.preventDefault(); closeMenu(); trackPresence(S.cur); arm(S.cur); }
     e.stopPropagation();
   });
 }
@@ -1022,10 +1040,12 @@ function renderStock() {
   });
   const items = active(S.cfg.items, "items"), packs = active(S.cfg.packs, "packs");
   const edit = canEdit();
-  const head1 = [], head2 = [];
+  const head1 = [], headW = [], head2 = [];
+  const mo = Number(ym.slice(5));
   for (let d = 1; d <= n; d++) {
-    const ds = dstr(ym, d), sun = dow(ds) === 0;
-    head1.push(`<th colspan="2" class="day-h ${sun ? "sun" : ""} ${ds === today ? "today" : ""}">${d}日（${WD[dow(ds)]}）</th>`);
+    const ds = dstr(ym, d), sun = dow(ds) === 0, cls = `${sun ? "sun" : ""} ${ds === today ? "today" : ""}`;
+    head1.push(`<th colspan="2" class="day-h ${cls}">${mo}月${d}日</th>`);
+    headW.push(`<th colspan="2" class="day-h wd ${cls}">週${WD[dow(ds)]}</th>`);
     head2.push(`<th class="mkh">%MK%</th><th class="day-h">剩餘</th>`);
   }
   const row = (x, kind, idx) => {
@@ -1045,7 +1065,8 @@ function renderStock() {
   const w = 170 + 70 + n * 2 * 62;
   $("#view").innerHTML = `<div class="stock">
     <table class="st" style="width:${w}px"><colgroup><col style="width:170px"><col style="width:70px">${"<col style='width:62px'>".repeat(n * 2)}</colgroup>
-    <thead><tr><th class="name" rowspan="2">品項</th><th class="open" rowspan="2">月初</th>${head1.join("")}</tr>
+    <thead><tr><th class="name" rowspan="3">品項</th><th class="open" rowspan="3">月初</th>${head1.join("")}</tr>
+      <tr>${headW.join("")}</tr>
       <tr>${head2.join("").replace(/%MK%/g, "製作")}</tr></thead>
     <tbody>
       <tr class="sec"><td class="name">內容物</td><td colspan="${n * 2 + 1}"></td></tr>
@@ -1290,7 +1311,7 @@ async function setRole(uid, r, el) {
 async function goMonth(ym) {
   if (S.touched && await checkIncomplete()) return;
   if (S.edit) await commitEdit(null);
-  S.month = ym; S.cur = null; S.armed = null; S.sel.clear(); S.ordersJson = ""; S.invJson = ""; S.inv = null; S.orders = [];
+  S.month = ym; S.cur = null; S.armed = null; trackPresence(null); S.sel.clear(); S.ordersJson = ""; S.invJson = ""; S.inv = null; S.orders = [];
   renderBar(); $("#view").innerHTML = `<div class="page muted">載入中</div>`;
   $("#scroll").scrollTo(0, 0);
   await loadData(true);
@@ -1298,7 +1319,7 @@ async function goMonth(ym) {
 async function goView(v) {
   if (S.touched && await checkIncomplete()) return;
   if (S.edit) await commitEdit(null);
-  S.view = v; S.cur = null; closeMenu();
+  S.view = v; S.cur = null; closeMenu(); trackPresence(null);
   $("#view").innerHTML = `<div class="page muted">載入中</div>`;
   $("#scroll").scrollTo(0, 0);
   renderNav(); renderBar();
