@@ -520,6 +520,19 @@ input[type=number] { -moz-appearance:textfield; appearance:textfield; }
 .boxsum b { display:block; font-size:12px; color:var(--soft); margin-bottom:4px; font-weight:600; }
 .warntxt { color:var(--alert); }
 
+/* ---------- 口味按鈕 ---------- */
+.chips { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.chips button { border:1px solid var(--rule); background:var(--card); color:var(--ink);
+  padding:9px 15px; border-radius:9px; font-size:14px; min-height:42px;
+  display:inline-flex; align-items:center; gap:7px; }
+.chips button:hover { border-color:var(--green); }
+.chips button.on { background:var(--green); border-color:var(--green); color:#fff; font-weight:600; }
+.chips button.off { opacity:.4; }
+.chips.big button { padding:10px 16px; min-height:44px; }
+.chips .cnt { background:rgba(255,255,255,.25); border-radius:5px; padding:0 6px;
+  font-size:12px; font-weight:700; }
+.chips .picked-n { font-size:12px; color:var(--soft); margin-left:2px; }
+
 </style>
 </head>
 <body>
@@ -540,7 +553,7 @@ const {
    Project URL 貼 SUPABASE_URL，anon public key 貼 SUPABASE_ANON_KEY
    anon key 本來就是公開給瀏覽器用的，真正的保護在 RLS
    ================================================================== */
-const VERSION = "2026-09-15a";
+const VERSION = "2026-09-15b";
 const LOW_DAYS = 7;
 
 /* 只讓大家記 4 碼。Supabase 有最低長度限制，所以送出前自動補字，
@@ -1608,15 +1621,11 @@ function OrderSheet({
   const [loc, setLoc] = useState(order ? order.loc : "store");
   const [busy, setBusy] = useState(false);
   const [box, setBox] = useState("single");
-  const [cake1, setCake1] = useState(CAKES[0]);
-  const [cake2, setCake2] = useState(CAKES[1]);
+  const [cakes, setCakes] = useState([]); // 蛋糕，可重複
   const [route, setRoute] = useState("cookie");
-  const [cookie, setCookie] = useState(COOKIES[0]);
-  const [mon1, setMon1] = useState(MONAKA[0]);
-  const [mon2, setMon2] = useState(MONAKA[1]);
+  const [cookie, setCookie] = useState(null); // 手工餅乾，單選
+  const [mons, setMons] = useState([]); // 最中餅，可重複，最多兩個
   const [boxes, setBoxes] = useState("1");
-
-  // 修改既有訂單時走原本的品項列
   const [lines, setLines] = useState(order ? order.lines.map(l => ({
     itemId: l.itemId,
     qty: l.qty
@@ -1632,19 +1641,60 @@ function OrderSheet({
   };
   const setLine = (i, patch) => setLines(lines.map((l, k) => k === i ? Object.assign({}, l, patch) : l));
 
-  /* 把禮盒拆成要扣的品項 */
+  /* 點一下加一個；額度滿了再點就變成減一個 */
+  const tapMulti = (list, setList, max, name) => {
+    const count = list.filter(x => x === name).length;
+    if (list.length < max) {
+      setList(list.concat([name]));
+    } else if (count > 0) {
+      const k = list.lastIndexOf(name);
+      setList(list.slice(0, k).concat(list.slice(k + 1)));
+    }
+  };
+  const tapOne = (cur, set, name) => set(cur === name ? null : name);
+  const pickRow = (opts, list, setList, max) => /*#__PURE__*/React.createElement("div", {
+    className: "chips"
+  }, opts.map(o => {
+    const n = list.filter(x => x === o).length;
+    const full = list.length >= max;
+    return /*#__PURE__*/React.createElement("button", {
+      key: o,
+      className: (n > 0 ? "on " : "") + (full && n === 0 ? "off" : ""),
+      onClick: () => tapMulti(list, setList, max, o)
+    }, o, n > 0 && /*#__PURE__*/React.createElement("span", {
+      className: "cnt"
+    }, n));
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "picked-n"
+  }, list.length, " / ", max));
+  const pickOne = (opts, cur, set) => /*#__PURE__*/React.createElement("div", {
+    className: "chips"
+  }, opts.map(o => /*#__PURE__*/React.createElement("button", {
+    key: o,
+    className: cur === o ? "on" : "",
+    onClick: () => tapOne(cur, set, o)
+  }, o)));
   const buildFromBox = () => {
     const n = Math.floor(Number(boxes) || 0);
     if (n <= 0) return {
       err: "請填盒數"
     };
-    const picks = [];
-    if (spec.cakes >= 1) picks.push(cake1);
-    if (spec.cakes >= 2) picks.push(cake2);
+    if (cakes.length < spec.cakes) return {
+      err: "請選滿 " + spec.cakes + " 個蛋糕"
+    };
+    const picks = cakes.slice();
     if (spec.yaki) {
-      if (route === "cookie") picks.push(cookie);else {
-        picks.push(mon1);
-        picks.push(mon2);
+      if (route === "cookie") {
+        if (!cookie) return {
+          err: "請選一款手工餅乾"
+        };
+        picks.push(cookie);
+      } else {
+        if (mons.length < 2) return {
+          err: "請選滿 2 個最中餅"
+        };
+        picks.push(mons[0]);
+        picks.push(mons[1]);
       }
     }
     const tally = {};
@@ -1750,33 +1800,55 @@ function OrderSheet({
     if (ok) close();
   };
   const preview = !editing && box !== "free" ? buildFromBox() : null;
-  const pick = (value, set, opts, label) => /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, label), /*#__PURE__*/React.createElement("select", {
-    value: value,
-    onChange: e => set(e.target.value)
-  }, opts.map(o => /*#__PURE__*/React.createElement("option", {
-    key: o,
-    value: o
-  }, o))));
   return /*#__PURE__*/React.createElement("div", {
     className: "sheet"
   }, /*#__PURE__*/React.createElement("header", null, order ? "修改訂單" : "新增訂單"), /*#__PURE__*/React.createElement("div", {
     className: "inner"
-  }, !editing && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fields"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "客人姓名"), /*#__PURE__*/React.createElement("input", {
+    value: customer,
+    onChange: e => setCustomer(e.target.value),
+    placeholder: "王小姐"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "寄出日"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "出貨地點"), /*#__PURE__*/React.createElement("div", {
+    className: "seg"
+  }, LOCS.map(l => /*#__PURE__*/React.createElement("button", {
+    key: l.id,
+    className: loc === l.id ? "on" : "",
+    onClick: () => setLoc(l.id)
+  }, l.name))))), /*#__PURE__*/React.createElement("hr", {
+    className: "prule"
+  }), !editing && /*#__PURE__*/React.createElement("div", {
     className: "fld full",
     style: {
       marginBottom: 14
     }
   }, /*#__PURE__*/React.createElement("label", null, "禮盒樣式"), /*#__PURE__*/React.createElement("div", {
-    className: "boxpick"
+    className: "chips big"
   }, BOXES.map(b => /*#__PURE__*/React.createElement("button", {
     key: b.id,
     className: box === b.id ? "on" : "",
-    onClick: () => setBox(b.id)
+    onClick: () => {
+      setBox(b.id);
+      setCakes([]);
+      setCookie(null);
+      setMons([]);
+    }
   }, b.name)))), !editing && box !== "free" && /*#__PURE__*/React.createElement("div", {
     className: "boxcfg"
-  }, spec.cakes >= 1 && pick(cake1, setCake1, CAKES, spec.cakes === 2 ? "蛋糕第一款" : "蛋糕"), spec.cakes >= 2 && pick(cake2, setCake2, CAKES, "蛋糕第二款，可跟第一款相同"), spec.yaki && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "蛋糕\u3000選 ", spec.cakes, " 個，可以選同一款"), pickRow(CAKES, cakes, setCakes, spec.cakes)), spec.yaki && /*#__PURE__*/React.createElement("div", {
     className: "fld full"
   }, /*#__PURE__*/React.createElement("label", null, "搭配"), /*#__PURE__*/React.createElement("div", {
     className: "seg"
@@ -1786,7 +1858,11 @@ function OrderSheet({
   }, "手工餅乾\u3000選一"), /*#__PURE__*/React.createElement("button", {
     className: route === "monaka" ? "on" : "",
     onClick: () => setRoute("monaka")
-  }, "最中餅\u3000選二"))), spec.yaki && route === "cookie" && pick(cookie, setCookie, COOKIES, "手工餅乾"), spec.yaki && route === "monaka" && pick(mon1, setMon1, MONAKA, "最中餅第一個"), spec.yaki && route === "monaka" && pick(mon2, setMon2, MONAKA, "最中餅第二個，可跟第一個相同"), /*#__PURE__*/React.createElement("div", {
+  }, "最中餅\u3000選二"))), spec.yaki && route === "cookie" && /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "手工餅乾"), pickOne(COOKIES, cookie, setCookie)), spec.yaki && route === "monaka" && /*#__PURE__*/React.createElement("div", {
+    className: "fld full"
+  }, /*#__PURE__*/React.createElement("label", null, "最中餅\u3000選 2 個，可以選同一款"), pickRow(MONAKA, mons, setMons, 2)), /*#__PURE__*/React.createElement("div", {
     className: "fld"
   }, /*#__PURE__*/React.createElement("label", null, "盒數"), /*#__PURE__*/React.createElement("input", {
     type: "text",
@@ -1833,31 +1909,7 @@ function OrderSheet({
       itemId: active[0] ? active[0].id : "",
       qty: ""
     }]))
-  }, "再加一個品項")), /*#__PURE__*/React.createElement("hr", {
-    className: "prule"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "fields"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "客人姓名"), /*#__PURE__*/React.createElement("input", {
-    value: customer,
-    onChange: e => setCustomer(e.target.value),
-    placeholder: "王小姐"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "寄出日"), /*#__PURE__*/React.createElement("input", {
-    type: "date",
-    value: date,
-    onChange: e => setDate(e.target.value)
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "fld full"
-  }, /*#__PURE__*/React.createElement("label", null, "出貨地點"), /*#__PURE__*/React.createElement("div", {
-    className: "seg"
-  }, LOCS.map(l => /*#__PURE__*/React.createElement("button", {
-    key: l.id,
-    className: loc === l.id ? "on" : "",
-    onClick: () => setLoc(l.id)
-  }, l.name)))))), /*#__PURE__*/React.createElement("footer", null, /*#__PURE__*/React.createElement("button", {
+  }, "再加一個品項"))), /*#__PURE__*/React.createElement("footer", null, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost",
     onClick: close
   }, "取消"), /*#__PURE__*/React.createElement("button", {
