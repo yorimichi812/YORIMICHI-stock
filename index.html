@@ -108,7 +108,8 @@ function go(key) {
   if (!app) return;
   if (!frames[key]) {
     const f = document.createElement("iframe");
-    f.src = app.src;
+    // 網址後面加上當下時間，瀏覽器就不會拿快取的舊版，每次打開都向伺服器要最新的
+    f.src = app.src + "?v=" + Date.now();
     f.title = app.title;
     document.getElementById("views").appendChild(f);
     frames[key] = f;
