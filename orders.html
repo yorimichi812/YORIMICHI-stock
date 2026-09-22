@@ -107,6 +107,11 @@ tr.r.packed td{background:var(--yellow)}
 td.kd.y{background:var(--yellow)}
 tr.r.sel td{box-shadow:inset 0 0 0 999px rgba(47,111,208,.12)}
 td.miss{outline:2px solid var(--miss);outline-offset:-2px}
+td.csel{box-shadow:inset 0 0 0 999px rgba(47,111,208,.18)}
+.palette{position:fixed;z-index:60;background:#fff;border:1px solid #cfc9b9;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:8px;display:grid;grid-template-columns:repeat(4,64px);gap:6px}
+.palette button{height:34px;border:1px solid rgba(0,0,0,.12);border-radius:6px;cursor:pointer;font-size:12.5px}
+.palette button:hover{outline:2px solid var(--ink)}
+.palette .clear{grid-column:1/-1;background:#fff;height:30px}
 td.cur{outline:2px solid var(--cur) !important;outline-offset:-2px;z-index:2}
 td[data-peer]{outline:2px solid var(--peer);outline-offset:-2px}
 .peer-tag{position:absolute;z-index:15;background:var(--peer);color:#fff;font-size:11px;line-height:15px;padding:0 5px;border-radius:4px 4px 4px 0;font-weight:500;pointer-events:none;white-space:nowrap}
@@ -247,11 +252,16 @@ const VIEWS = [
   { key: "people", label: "人員", roles: ["admin"] }
 ];
 const WD = "日一二三四五六";
+const COLORS = [
+  { k: "blue", t: "藍", c: "#cfe2ff" }, { k: "green", t: "綠", c: "#cdeecb" }, { k: "orange", t: "橘", c: "#ffd8b0" }, { k: "pink", t: "粉紅", c: "#ffd1e0" },
+  { k: "purple", t: "紫", c: "#e3d4f7" }, { k: "cyan", t: "青", c: "#c6eef2" }, { k: "red", t: "紅", c: "#f6b8b3" }, { k: "gray", t: "灰", c: "#dcdcdc" }
+];
+const colorHex = k => (COLORS.find(x => x.k === k) || {}).c;
 
 const S = {
   me: null, cfg: { items: [], boxes: [], tags: [], packs: [], bom: [], item_bom: [] }, today: "",
   month: "", view: "sheet", orders: [], inv: null,
-  cur: null, anchor: null, sel: new Set(), edit: null, touched: null,
+  cur: null, anchor: null, sel: new Set(), cells: new Set(), anchorCell: null, drag: null, edit: null, touched: null,
   presence: {}, channel: null, timer: null, syncOk: true, lastSync: null,
   cfgJson: "", ordersJson: "", invJson: "",
   logs: { f: { from: "", to: "", actor: "", customer: "" }, rows: [], actors: [], done: true, seq: 0 },
@@ -562,7 +572,8 @@ function renderBar() {
       <button class="btn ghost" type="button" data-a="st-dispatched" ${n ? "" : "disabled"}><span class="swatch-y"></span>已派單</button>
       <button class="btn ghost" type="button" data-a="st-packed" ${n ? "" : "disabled"}><span class="swatch-y"></span><span class="swatch-y" style="margin-left:-4px"></span>已包裝</button>
       <button class="btn ghost" type="button" data-a="st-none" ${n ? "" : "disabled"}>取消標示</button>
-      <button class="btn ghost" type="button" data-a="move" ${n ? "" : "disabled"}>改日期</button>`;
+      <button class="btn ghost" type="button" data-a="move" ${n ? "" : "disabled"}>改日期</button>
+      <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>`;
   } else tools.innerHTML = "";
 }
 function render() {
@@ -618,12 +629,14 @@ function renderSheet() {
         <tr><th>寄/取</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}">${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
       for (const o of white) {
         const k = `w|${o.id}`;
+        const packed = o.status === "packed";
+        const cs = (f, yellow) => { const own = (o.colors || {})[`w|${f}`]; return own && (!yellow || o.color_keep === true) ? ` style="background:${colorHex(own)}"` : ""; };
         html += `<tr class="r ${o.status === "packed" ? "packed" : ""} ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="w">
-          <td class="kd ${o.status !== "none" ? "y" : ""}" data-k="${k}|kind" data-d="${d}">${esc(o.kind || "")}</td>
-          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}">${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
-          ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}">${fmt((o.contents || {})[i.id])}</td>`).join("")}
-          <td class="tg" data-k="${k}|tag" data-d="${d}">${esc(tagName(o.tag_id))}</td>
-          <td class="cd" data-k="${k}|card" data-d="${d}" title="${esc(cardText(o))}">${esc(cardText(o))}</td><td></td></tr>`;
+          <td class="kd ${o.status !== "none" ? "y" : ""}" data-k="${k}|kind" data-d="${d}"${cs("kind", o.status !== "none")}>${esc(o.kind || "")}</td>
+          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
+          ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}"${cs("c:" + i.id, packed)}>${fmt((o.contents || {})[i.id])}</td>`).join("")}
+          <td class="tg" data-k="${k}|tag" data-d="${d}"${cs("tag", packed)}>${esc(tagName(o.tag_id))}</td>
+          <td class="cd" data-k="${k}|card" data-d="${d}" title="${esc(cardText(o))}"${cs("card", packed)}>${esc(cardText(o))}</td><td></td></tr>`;
       }
       if (edit) {
         const k = `w|new:${d}`;
@@ -638,9 +651,10 @@ function renderSheet() {
         <tr><th>客人</th>${boxes.map(b => `<th title="${esc(b.name)}">${esc(b.name)}</th>`).join("")}<th></th></tr>`;
       for (const o of green) {
         const k = `g|${o.id}`;
+        const cs = f => { const own = (o.colors || {})[`g|${f}`]; return own ? ` style="background:${colorHex(own)}"` : ""; };
         html += `<tr class="r ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="g">
-          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}">${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
-          ${boxes.map(b => `<td class="n" data-k="${k}|b:${b.id}" data-d="${d}">${fmt((o.boxes || {})[b.id])}</td>`).join("")}<td></td></tr>`;
+          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name")}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
+          ${boxes.map(b => `<td class="n" data-k="${k}|b:${b.id}" data-d="${d}"${cs("b:" + b.id)}>${fmt((o.boxes || {})[b.id])}</td>`).join("")}<td></td></tr>`;
       }
       for (let i = green.length; i < maxG; i++) html += `<tr class="fill"><td colspan="${boxes.length + 2}">&nbsp;</td></tr>`;
       const sumB = boxes.map(b => list.reduce((a, o) => a + ((o.boxes || {})[b.id] || 0), 0));
@@ -655,7 +669,7 @@ function renderSheet() {
     html = `<div class="page"><div class="empty-note">還沒有內容物和禮盒款式。先到「設定」新增 H、L、A 這些內容物欄位和禮盒款式，出貨表才會有欄位可以填。</div></div>` + html;
   }
   $("#view").innerHTML = html;
-  paintCursor(); paintPresence(); placeEditor();
+  paintCursor(); paintPresence(); paintCells(); placeEditor();
 }
 
 /* ---------- 格子定位 ---------- */
@@ -720,6 +734,31 @@ async function checkIncomplete() {
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "nearest", inline: "nearest" });
   arm(k);
   return true;
+}
+
+// 同一天同一段裡，從 a 到 b 的長方形範圍（不含空白新列）
+function blockOf(k) { const c = cellOf(k); if (!c) return null; const tr = c.parentElement; return tr.dataset.d + "|" + tr.dataset.s; }
+function rectKeys(a, b) {
+  const ca = cellOf(a), cb = cellOf(b); if (!ca || !cb || blockOf(a) !== blockOf(b)) return [a];
+  const tr = ca.parentElement;
+  const rows = [...document.querySelectorAll(`tr.r[data-d="${tr.dataset.d}"][data-s="${tr.dataset.s}"]`)].filter(r => !r.classList.contains("new"));
+  const ra = rows.indexOf(ca.parentElement), rb = rows.indexOf(cb.parentElement);
+  if (ra < 0 || rb < 0) return [a];
+  const c1 = Math.min(ca.cellIndex, cb.cellIndex), c2 = Math.max(ca.cellIndex, cb.cellIndex);
+  const out = [];
+  for (let i = Math.min(ra, rb); i <= Math.max(ra, rb); i++)
+    for (let j = c1; j <= c2; j++) { const td = rows[i].cells[j]; if (td && td.dataset.k) out.push(td.dataset.k); }
+  return out;
+}
+function paintCells() {
+  document.querySelectorAll("td.csel").forEach(t => t.classList.remove("csel"));
+  if (S.cells.size < 2) return;   // 只選一格時用游標框表示就好
+  S.cells.forEach(k => { const c = cellOf(k); if (c) c.classList.add("csel"); });
+}
+function syncRowsFromCells() {
+  S.sel = new Set([...S.cells].map(parseKey).filter(p => typeof p.o === "number" && p.s !== "st").map(p => p.o));
+  document.querySelectorAll("tr.r").forEach(tr => tr.classList.toggle("sel", S.sel.has(Number(tr.dataset.o))));
+  renderBar();
 }
 
 function rowsInSection(d, s) {
@@ -932,7 +971,8 @@ function moveCursor(dir) {
     const p = parseKey(t.dataset.k);
     if (p.isNew && p.f !== "name") t = cellOf(t.dataset.k.replace(/\|[^|]+$/, "|name")) || t;
     setCur(t.dataset.k);
-    if (typeof parseKey(t.dataset.k).o === "number" && parseKey(t.dataset.k).s !== "st") selectRow(parseKey(t.dataset.k).o, null);
+    const tp = parseKey(t.dataset.k);
+    if (tp.s !== "st") { S.cells = tp.isNew ? new Set() : new Set([t.dataset.k]); S.anchorCell = t.dataset.k; syncRowsFromCells(); paintCells(); }
   }
 }
 
@@ -978,9 +1018,60 @@ function openMenu(k) {
   });
 }
 
+/* ---------- 塗色 ---------- */
+function closePalette() { const p = $("#palette"); if (p) p.remove(); }
+function openPalette(btn) {
+  closePalette();
+  const pal = document.createElement("div"); pal.id = "palette"; pal.className = "palette";
+  pal.innerHTML = COLORS.map(c => `<button type="button" data-color="${c.k}" style="background:${c.c}">${c.t}</button>`).join("") +
+    `<button type="button" class="clear" data-color="">清除顏色</button>`;
+  document.body.appendChild(pal);
+  const r = btn.getBoundingClientRect();
+  pal.style.top = (r.bottom + 6) + "px";
+  pal.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + "px";
+  pal.onclick = e => { const b = e.target.closest("[data-color]"); if (!b) return; closePalette(); applyColor(b.dataset.color || null); };
+}
+document.addEventListener("mousedown", e => { if (!e.target.closest("#palette") && !e.target.closest('[data-a="paint"]')) closePalette(); }, true);
+// 這一格現在是不是被狀態染成黃色
+function isYellow(o, s, f) { return s === "w" && (o.status === "packed" || (f === "kind" && o.status !== "none")); }
+async function applyColor(color) {
+  const cells = [...S.cells].map(parseKey).filter(p => typeof p.o === "number" && p.s !== "st" && orderOf(p.o));
+  if (!cells.length) return;
+  let keep = null;
+  if (color) {
+    const yellowIds = [...new Set(cells.filter(p => isYellow(orderOf(p.o), p.s, p.f)).map(p => p.o))];
+    if (yellowIds.length) {
+      keep = await modal({ title: "這幾格現在是黃色", ok: "顯示我塗的顏色", cancel: "取消",
+        body: `<p>有 ${yellowIds.length} 筆訂單的格子已經因為「已派單／已包裝」變成黃色：${esc(yellowIds.map(id => orderOf(id).name).join("、"))}。</p><p>這些格子要顯示你塗的顏色，還是維持黃色？</p>`,
+        extra: [{ label: "維持黃色", value: "yellow" }] });
+      if (!keep) return;
+      keep = keep === "yellow" ? { ids: yellowIds, v: false } : { ids: yellowIds, v: true };
+    }
+  }
+  try {
+    await call("ship_color_set", { p_cells: cells.map(p => ({ id: p.o, cell: `${p.s}|${p.f}` })), p_color: color });
+    if (keep) await call("ship_color_keep", { p_ids: keep.ids, p_keep: keep.v });
+    S.ordersJson = ""; notify(); await refresh();
+  } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
+}
+
 /* ---------- 狀態、改日期、拖曳 ---------- */
 async function setStatus(st) {
   const ids = [...S.sel]; if (!ids.length) return;
+  if (st !== "none") {
+    const hit = ids.filter(id => {
+      const o = orderOf(id); if (!o) return false;
+      return Object.keys(o.colors || {}).some(ck => ck.startsWith("w|") && (st === "packed" || ck === "w|kind"));
+    });
+    if (hit.length) {
+      const r = await modal({ title: "有自己塗過顏色的格子", ok: "保留我塗的顏色", cancel: "取消",
+        body: `<p>${esc(hit.map(id => orderOf(id).name).join("、"))} 有自己塗過顏色的格子，標成${st === "packed" ? "已包裝" : "已派單"}後會被黃色蓋過。</p><p>這些格子要保留自己的顏色，還是變成黃色？</p>`,
+        extra: [{ label: "變成黃色", value: "yellow" }] });
+      if (!r) return;
+      try { await call("ship_color_keep", { p_ids: hit, p_keep: r !== "yellow" }); }
+      catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); return; }
+    }
+  }
   try { await call("ship_order_status", { p_ids: ids, p_status: st }); notify(); await refresh(); toast(st === "none" ? "已取消標示" : st === "packed" ? "已標示已包裝" : "已標示已派單"); }
   catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
 }
@@ -1046,16 +1137,34 @@ document.addEventListener("mousedown", e => {
   e.preventDefault();   // 焦點留在隱形輸入框，直接打字就能輸入
   if (S.edit) commitEdit(null);
   const k = td.dataset.k; const p = parseKey(k);
+  const ctrl = e.ctrlKey || e.metaKey;
   if (p.s !== "st") {
-    if (typeof p.o === "number") selectRow(p.o, e); else if (!(e.ctrlKey || e.metaKey || e.shiftKey)) { S.sel.clear(); document.querySelectorAll("tr.r.sel").forEach(x => x.classList.remove("sel")); renderBar(); }
+    if (p.isNew) { S.cells = new Set(); S.anchorCell = null; }
+    else if (e.shiftKey && S.anchorCell && blockOf(S.anchorCell) === blockOf(k)) {
+      S.cells = new Set([...(ctrl ? S.cells : []), ...rectKeys(S.anchorCell, k)]);
+    } else if (ctrl) { S.cells.has(k) ? S.cells.delete(k) : S.cells.add(k); S.anchorCell = k; }
+    else { S.cells = new Set([k]); S.anchorCell = k; }
+    S.drag = p.isNew ? null : { start: k, base: ctrl ? new Set(S.cells) : new Set(), moved: false, mod: ctrl || e.shiftKey, last: k };
+    syncRowsFromCells(); paintCells();
   }
   let target = k;
   if (p.isNew && p.f !== "name") target = k.replace(/\|[^|]+$/, "|name");
-  const wasCur = S.cur === target;
-  setCur(target).then(() => {
-    if (S.cur !== target) return;
-    if (canEdit() && ["kind", "card", "tag"].includes(p.f) && !p.isNew && !(e.ctrlKey || e.metaKey || e.shiftKey)) openMenu(target);
-  });
+  setCur(target);
+});
+document.addEventListener("mousemove", e => {
+  const d = S.drag; if (!d) return;
+  if (!(e.buttons & 1)) { S.drag = null; return; }
+  const td = e.target.closest && e.target.closest("td[data-k]"); if (!td) return;
+  const k = td.dataset.k; if (k === d.last) return;
+  const p = parseKey(k); if (p.isNew || p.s === "st" || blockOf(k) !== blockOf(d.start)) return;
+  d.last = k; d.moved = true;
+  S.cells = new Set([...d.base, ...rectKeys(d.start, k)]);
+  syncRowsFromCells(); paintCells();
+});
+document.addEventListener("mouseup", () => {
+  const d = S.drag; S.drag = null; if (!d || d.moved || d.mod) return;
+  const p = parseKey(d.start);
+  if (canEdit() && ["kind", "card", "tag"].includes(p.f) && !p.isNew && S.cur === d.start) openMenu(d.start);
 });
 document.addEventListener("dblclick", e => {
   const td = e.target.closest && e.target.closest("td[data-k]"); if (!td) return;
@@ -1587,7 +1696,7 @@ async function setRole(uid, r, el) {
 async function goMonth(ym) {
   if (S.touched && await checkIncomplete()) return;
   if (S.edit) await commitEdit(null);
-  S.month = ym; S.cur = null; S.armed = null; trackPresence(null); S.sel.clear(); S.ordersJson = ""; S.invJson = ""; S.inv = null; S.orders = [];
+  S.month = ym; S.cur = null; S.armed = null; S.cells = new Set(); trackPresence(null); S.sel.clear(); S.ordersJson = ""; S.invJson = ""; S.inv = null; S.orders = [];
   renderBar(); $("#view").innerHTML = `<div class="page muted">載入中</div>`;
   $("#scroll").scrollTo(0, 0);
   await loadData(true);
@@ -1613,6 +1722,7 @@ document.addEventListener("click", e => {
   if (act === "st-packed") return setStatus("packed");
   if (act === "st-none") return setStatus("none");
   if (act === "move") return moveDate();
+  if (act === "paint") return openPalette(a);
   if (act === "more-logs") return loadLogs(false).catch(() => {});
   if (act === "clear-logs") { S.logs.f = { from: "", to: "", actor: "", customer: "" }; $("#view").innerHTML = logsShell(); return loadLogs(true).catch(() => {}); }
 });
