@@ -97,6 +97,7 @@ table.t th{font-weight:500;font-size:11.5px;color:#4a514b;background:rgba(0,0,0,
 table.t td.n{text-align:center;font-variant-numeric:tabular-nums}
 table.t td.nm{text-align:left;color:#5b2c8f}
 table.t td.kd,table.t td.cd,table.t td.tg{text-align:center}
+table.t td.cd{font-size:11.5px}
 table.t td.tg{font-size:11.5px}
 table.t tr.tot td{border-top:2px solid var(--grid-strong);font-weight:700;background:rgba(0,0,0,.03);color:#333}
 table.t tr.tot td.big{color:var(--alert)}
@@ -231,7 +232,9 @@ const SUPABASE_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
 /* ======================================================================= */
 const PIN_TAIL = "-ld24";            // 與庫存系統相同的密碼補字規則
 const POLL_MS = 20000;
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// 登入只存在這個分頁：關掉分頁或瀏覽器就登出，重新整理不用重登。順便清掉以前存在瀏覽器裡的舊登入。
+try { Object.keys(localStorage).forEach(k => { if (k.startsWith("sb-") && k.endsWith("-auth-token")) localStorage.removeItem(k); }); } catch (e) {}
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: window.sessionStorage } });
 
 const ROLE_NAME = { admin: "管理者", cs: "客服", packer: "包裝部", kitchen: "內場" };
 const VIEWS = [
@@ -245,7 +248,7 @@ const VIEWS = [
 const WD = "日一二三四五六";
 
 const S = {
-  me: null, cfg: { items: [], boxes: [], tags: [], packs: [], bom: [] }, today: "",
+  me: null, cfg: { items: [], boxes: [], tags: [], packs: [], bom: [], item_bom: [] }, today: "",
   month: "", view: "sheet", orders: [], inv: null,
   cur: null, anchor: null, sel: new Set(), edit: null, touched: null,
   presence: {}, channel: null, timer: null, syncOk: true, lastSync: null,
@@ -340,6 +343,11 @@ async function boot() {
   closeAll(); stopSync();
   const { data } = await sb.auth.getSession();
   if (!data.session) return showLogin();
+  // 第一次登入要先設定自己的密碼（跟門市/工廠撥調共用同一個標記）
+  try {
+    const r = await sb.from("app_users").select("must_set_pin").eq("id", data.session.user.id).maybeSingle();
+    if (r && r.data && r.data.must_set_pin) return showSetPin(data.session.user.id);
+  } catch (e) {}
   let b;
   try {
     const r = await sb.rpc("ship_bootstrap");
@@ -392,6 +400,33 @@ async function showLogin() {
   };
   $("#pw-go").onclick = go;
   $("#pw-in").onkeydown = e => { if (e.key === "Enter") go(); };
+}
+
+function showSetPin(uid) {
+  S.me = null; stopSync();
+  $("#app").hidden = true; $("#gate").hidden = false;
+  $("#gate-body").innerHTML = `<p style="line-height:1.7">第一次登入，請設定你自己的密碼，之後都用這組登入。</p>
+    <label class="lbl" for="sp1">新密碼（至少 4 碼）</label><input id="sp1" type="password" maxlength="20" style="width:100%;margin-bottom:10px">
+    <label class="lbl" for="sp2">再輸入一次</label><input id="sp2" type="password" maxlength="20" style="width:100%">
+    <p class="err" id="sp-err"></p>
+    <div style="display:flex;gap:8px"><button class="btn primary" type="button" id="sp-go">設定密碼</button><button class="btn ghost" type="button" id="sp-out">登出</button></div>`;
+  $("#sp1").focus();
+  const go = async () => {
+    const a = $("#sp1").value, b = $("#sp2").value, err = $("#sp-err");
+    if (a.length < 4) { err.textContent = "密碼至少 4 碼"; return; }
+    if (a !== b) { err.textContent = "兩次輸入不一樣"; return; }
+    $("#sp-go").disabled = true;
+    try {
+      const r = await sb.auth.updateUser({ password: a + PIN_TAIL });
+      if (r.error) throw r.error;
+      const u = await sb.from("app_users").update({ must_set_pin: false }).eq("id", uid);
+      if (u.error) throw u.error;
+      toast("密碼已設定"); tellParent(); boot();
+    } catch (e) { err.textContent = friendly(e.message); $("#sp-go").disabled = false; }
+  };
+  $("#sp-go").onclick = go;
+  $("#sp2").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#sp-out").onclick = logout;
 }
 
 function showGateMessage(msg, retry) {
@@ -450,7 +485,7 @@ function renderSync() {
 }
 
 function applyCfg(b) {
-  const c = { items: b.items, boxes: b.boxes, tags: b.tags, packs: b.packs, bom: b.bom };
+  const c = { items: b.items, boxes: b.boxes, tags: b.tags, packs: b.packs, bom: b.bom, item_bom: b.item_bom || [] };
   const j = JSON.stringify(c);
   if (j === S.cfgJson) return false;
   S.cfgJson = j; S.cfg = c; return true;
@@ -531,10 +566,11 @@ function monthBoxes(ym) {
   const used = new Set(); S.orders.forEach(o => Object.keys(o.boxes || {}).forEach(k => used.add(Number(k))));
   return S.cfg.boxes.filter(b => used.has(b.id) || visibleIn(b, ym));
 }
+const cardText = o => o.card_text ? o.card_text : o.card === true ? "○" : o.card === false ? "✕" : "";
 const tagName = id => { const t = S.cfg.tags.find(x => x.id === id); return t ? t.name : ""; };
 
 /* =================== 出貨表 =================== */
-const W = { kd: 38, nm: 128, it: 36, tg: 60, cd: 26, bx: 70 };
+const W = { kd: 38, nm: 128, it: 36, tg: 60, cd: 62, bx: 70 };
 function renderSheet() {
   const ym = S.month, n = daysIn(ym);
   const items = monthItems(ym), boxes = monthBoxes(ym);
@@ -567,7 +603,7 @@ function renderSheet() {
           <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}">${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
           ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}">${fmt((o.contents || {})[i.id])}</td>`).join("")}
           <td class="tg" data-k="${k}|tag" data-d="${d}">${esc(tagName(o.tag_id))}</td>
-          <td class="cd ${o.card === null || o.card === undefined ? "miss" : ""}" data-k="${k}|card" data-d="${d}">${o.card === true ? "○" : o.card === false ? "✕" : ""}</td><td></td></tr>`;
+          <td class="cd" data-k="${k}|card" data-d="${d}" title="${esc(cardText(o))}">${esc(cardText(o))}</td><td></td></tr>`;
       }
       if (edit) {
         const k = `w|new:${d}`;
@@ -634,7 +670,7 @@ function orderValue(o, f) {
   if (!o) return null;
   if (f === "name") return o.name;
   if (f === "kind") return o.kind || null;
-  if (f === "card") return (o.card === true || o.card === false) ? o.card : null;
+  if (f === "card") return o.card_text ? o.card_text : (o.card === true || o.card === false) ? o.card : null;
   if (f === "tag") return o.tag_id || null;
   if (f.startsWith("c:")) return (o.contents || {})[f.slice(2)] || null;
   if (f.startsWith("b:")) return (o.boxes || {})[f.slice(2)] || null;
@@ -657,10 +693,9 @@ async function setCur(k, opts = {}) {
 async function checkIncomplete() {
   const id = S.touched; S.touched = null;
   const o = orderOf(id); if (!o) return false;
-  const miss = []; if (!o.kind) miss.push("寄／取"); if (o.card !== true && o.card !== false) miss.push("小卡");
-  if (!miss.length) return false;
-  await alertBox(`「${o.name}」還沒選${miss.join("和")}，請補選。`, "還沒填完");
-  const k = `w|${o.id}|${!o.kind ? "kind" : "card"}`;
+  if (o.kind) return false;
+  await alertBox(`「${o.name}」還沒選寄／取，請補選。`, "還沒填完");
+  const k = `w|${o.id}|kind`;
   S.cur = k; paintCursor(); trackPresence(k);
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "nearest", inline: "nearest" });
   arm(k);
@@ -737,18 +772,18 @@ function beginTyping() {
   S.armed = null; $("#editor").classList.remove("armed");
   placeEditor(); trackPresence(k);
 }
-function startEdit(k) {
+function startEdit(k, cardText) {
   if (!canEdit()) return;
   const p = parseKey(k);
   if (p.s !== "st") {
     if (p.isNew && p.f !== "name") return setCur(k.replace(/\|[^|]+$/, "|name"));
-    if (["kind", "card", "tag"].includes(p.f)) return openMenu(k);
+    if (["kind", "card", "tag"].includes(p.f) && !(p.f === "card" && cardText)) return openMenu(k);
   }
   const c = cellOf(k); if (!c) return;
   const old = editValue(k);
   S.edit = { key: k, old, date: c.dataset.d }; S.armed = null;
   const e = editorEl();
-  e.value = old === null || old === undefined ? "" : String(old);
+  e.value = old === null || old === undefined || typeof old === "boolean" ? "" : String(old);
   placeEditor(); e.select();
   trackPresence(k);
 }
@@ -781,6 +816,13 @@ async function commitEdit(move) {
   let ok = true;
   if (p.s === "st") ok = await saveStock(p, ed, raw);
   else if (p.f === "name") ok = await saveName(p, ed, raw);
+  else if (p.f === "card") {
+    if (raw.length > 20) { await alertBox("小卡的內容最多 20 個字。"); ok = false; }
+    else {
+      const nv = raw === "" ? null : raw === "○" || raw.toUpperCase() === "O" ? true : raw === "✕" || raw.toUpperCase() === "X" ? false : raw;
+      if (nv !== ed.old) ok = await saveField(p.o, "card", ed.old, nv, ed.date);
+    }
+  }
   else {
     if (raw !== "" && !/^\d+$/.test(raw)) { await alertBox("請輸入 0 以上的整數。"); ok = false; }
     else {
@@ -820,7 +862,7 @@ async function saveField(id, f, oldV, newV, date) {
   try {
     let r = await call("ship_order_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
     if (r && r.conflict) {
-      const show = v => f === "card" ? (v === true ? "○" : v === false ? "✕" : "空白") : f === "tag" ? (tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
+      const show = v => f === "card" ? (v === true ? "○" : v === false ? "✕" : v ? v : "空白") : f === "tag" ? (tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
       const force = await modal({
         title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
         body: `<p>「${esc(o.name)}」的這一格剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(show(r.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
@@ -837,7 +879,9 @@ async function saveField(id, f, oldV, newV, date) {
   }
 }
 function applyLocal(o, f, v) {
-  if (f === "name") o.name = v; else if (f === "kind") o.kind = v; else if (f === "card") o.card = v; else if (f === "tag") o.tag_id = v;
+  if (f === "name") o.name = v; else if (f === "kind") o.kind = v;
+  else if (f === "card") { if (typeof v === "string") { o.card_text = v; o.card = null; } else { o.card = v; o.card_text = null; } }
+  else if (f === "tag") o.tag_id = v;
   else if (f.startsWith("c:")) { o.contents = { ...o.contents }; if (v) o.contents[f.slice(2)] = v; else delete o.contents[f.slice(2)]; }
   else if (f.startsWith("b:")) { o.boxes = { ...o.boxes }; if (v) o.boxes[f.slice(2)] = v; else delete o.boxes[f.slice(2)]; }
   S.ordersJson = "";
@@ -884,7 +928,7 @@ function openMenu(k) {
   if (p.f === "kind") {
     const sun = dow(o.ship_date) === 0;
     opts = [{ v: "寄", t: "寄出", dis: sun }, { v: "取", t: "店取" }, { v: null, t: "清除" }];
-  } else if (p.f === "card") opts = [{ v: true, t: "○　有小卡" }, { v: false, t: "✕　沒有小卡" }, { v: null, t: "清除" }];
+  } else if (p.f === "card") opts = [{ v: true, t: "○　有小卡" }, { v: false, t: "✕　沒有小卡" }, { v: "__text__", t: "自己輸入…" }, { v: null, t: "清除" }];
   else if (p.f === "tag") {
     opts = S.cfg.tags.filter(t => !t.hidden || t.id === o.tag_id).map(t => ({ v: t.id, t: t.name }));
     opts.push({ v: null, t: "空白" });
@@ -899,6 +943,7 @@ function openMenu(k) {
   const cur = orderValue(o, p.f);
   m.querySelectorAll("button").forEach(b => b.onclick = async () => {
     const x = opts[Number(b.dataset.i)]; closeMenu(); trackPresence(S.cur);
+    if (x.v === "__text__") return startEdit(k, true);
     if (x.v !== cur) await saveField(o.id, p.f, cur, x.v, o.ship_date);
     arm(S.cur);
   });
@@ -1060,7 +1105,7 @@ function renderStock() {
       run += mk - us;
       const low = run < x.safety;
       const k = `st|${kind}:${x.id}|${dstr(ym, d)}`;
-      cells += `<td class="mk" ${edit ? `data-k="${k}"` : ""} data-d="${dstr(ym, d)}">${mk ? fmt0(mk) : ""}</td><td class="rm ${low ? "low" : ""}" title="${us ? "當天訂單用掉 " + us : ""}">${fmt0(run)}</td>`;
+      cells += `<td class="mk" ${edit ? `data-k="${k}"` : ""} data-d="${dstr(ym, d)}">${mk ? fmt0(mk) : ""}</td><td class="rm ${low ? "low" : ""}" title="${us ? (kind === "item" ? "當天訂單用掉 " : "當天出貨與製作用掉 ") + us : ""}">${fmt0(run)}</td>`;
     }
     const label = kind === "item" ? `${esc(x.code)}　${esc(x.name)}` : esc(x.name);
     return `<tr class="r ${["", "z1", "", "z2", "", "z3"][idx % 6]}"><td class="name">${label}<span class="unit">${esc(x.unit)}</span></td><td class="open">${fmt0(r.open)}</td>${cells}</tr>`;
@@ -1100,8 +1145,13 @@ async function saveStock(p, ed, raw) {
 /* =================== 設定 =================== */
 function monthsText(m) { return !m ? "所有月份" : m.map(x => `${x.slice(0, 4)}年${Number(x.slice(5))}月`).join("、"); }
 function hiddenBadge(x) { return x.hidden_from ? `<span class="tag-off">${Number(x.hidden_from.slice(5))}月起下架</span>` : x.hidden ? `<span class="tag-off">已下架</span>` : ""; }
-function bomText(boxId) {
-  const vs = S.cfg.bom.filter(b => b.box_id === boxId).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1);
+function bomVersions(kind, id) {
+  return kind === "item"
+    ? S.cfg.item_bom.filter(b => b.item_id === id).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1)
+    : S.cfg.bom.filter(b => b.box_id === id).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1);
+}
+function bomText(id, kind = "box") {
+  const vs = bomVersions(kind, id);
   if (!vs.length) return `<span class="muted">未設定</span>`;
   const v = vs[vs.length - 1];
   const txt = (v.lines || []).map(l => { const p = S.cfg.packs.find(x => x.id === l.pack); return p ? `${p.name}×${Number(l.qty)}` : ""; }).filter(Boolean).join("、") || "無";
@@ -1121,9 +1171,9 @@ function renderSettings() {
   return `<div class="page">
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
-    ${items.length ? `<table class="plain"><tr><th>代號</th><th>全名</th><th>單位</th><th>安全量</th><th>出現月份</th><th></th></tr>
-      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(x.unit)}</td><td class="num">${fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${ops("item", x, items)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
-    <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="new" data-kind="box">新增禮盒款式</button></div>
+    ${items.length ? `<table class="plain"><tr><th>代號</th><th>全名</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
+      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(x.unit)}</td><td class="num">${fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id, "item")}</td><td>${ops("item", x, items, `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
+    <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
     ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th><th></th></tr>
       ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td><td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
     <div class="sec-head"><h3>包材</h3><button class="btn primary" type="button" data-set="new" data-kind="pack">新增包材</button></div>
@@ -1183,16 +1233,20 @@ async function editSetting(kind, id) {
     }
   });
 }
-async function editBom(boxId) {
-  const box = S.cfg.boxes.find(b => b.id === boxId); if (!box) return;
-  const vs = S.cfg.bom.filter(b => b.box_id === boxId).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1);
+async function editBom(boxId, kind = "box") {
+  const src = kind === "item" ? S.cfg.items.find(b => b.id === boxId) : S.cfg.boxes.find(b => b.id === boxId);
+  if (!src) return;
+  const box = { name: kind === "item" ? `${src.code} ${src.name}` : src.name, unit: kind === "item" ? (src.unit || "個") : "盒" };
+  const vs = bomVersions(kind, boxId);
   const curV = vs[vs.length - 1];
   const cur = {}; (curV ? curV.lines : []).forEach(l => cur[l.pack] = Number(l.qty));
   const packs = S.cfg.packs.filter(p => !p.hidden_from || cur[p.id]);
   if (!packs.length) { await alertBox("還沒有包材。請先在「包材」新增外盒、提袋、緞帶這些品項，再回來設定清單。", "還沒有包材"); return; }
   const lines = await modal({
-    title: `「${box.name}」的包材清單`, ok: "儲存清單", wide: true,
-    body: `<p class="muted">一盒「${esc(box.name)}」會用到哪些包材、各幾個。不用的留空。</p>
+    title: `「${box.name}」的${kind === "item" ? "製作用" : ""}包材清單`, ok: "儲存清單", wide: true,
+    body: `<p class="muted">${kind === "item"
+        ? `做 1 ${esc(box.unit)}「${esc(box.name)}」會用到哪些包材、各幾個，在製作那天扣掉。不用的留空。`
+        : `一盒「${esc(box.name)}」會用到哪些包材、各幾個，在出貨那天扣掉。不用的留空。`}</p>
       ${packs.map(p => `<div class="bom-row"><span>${esc(p.name)}<span class="muted" style="font-size:12px;margin-left:4px">${esc(p.unit)}</span></span>
         <input type="number" min="0" step="any" data-pack="${p.id}" value="${cur[p.id] || ""}"></div>`).join("")}`,
     onOk: async ({ root, setErr }) => {
@@ -1210,9 +1264,9 @@ async function editBom(boxId) {
   if (curV && (curV.lines || []).length) {
     const choice = await modal({
       title: "舊訂單要怎麼算？", ok: "從某一天起才用新清單", cancel: "取消",
-      body: `<p>「${esc(box.name)}」原本就有包材清單。已經建立的訂單要怎麼算包材？</p>
-        <p><b>全部重算</b>：所有訂單（包括過去的）都照新清單算，過去的包材剩餘數字也會跟著變。</p>
-        <p><b>從某一天起</b>：那天以後出貨的訂單才用新清單，之前的照舊清單算。</p>
+      body: `<p>「${esc(box.name)}」原本就有包材清單。已經${kind === "item" ? "填過的製作數量" : "建立的訂單"}要怎麼算包材？</p>
+        <p><b>全部重算</b>：${kind === "item" ? "所有製作（包括過去的）" : "所有訂單（包括過去的）"}都照新清單算，過去的包材剩餘數字也會跟著變。</p>
+        <p><b>從某一天起</b>：那天以後${kind === "item" ? "的製作" : "出貨的訂單"}才用新清單，之前的照舊清單算。</p>
         <div class="field"><label class="lbl" for="b-from">新清單從哪一天開始</label><input type="date" id="b-from" value="${S.today}"></div>`,
       extra: [{ label: "全部重算", value: "all" }],
       onOk: async ({ root, setErr }) => { const d = $("#b-from", root).value; if (!d) { setErr("請選擇日期。"); return false; } return { from: d }; }
@@ -1220,7 +1274,11 @@ async function editBom(boxId) {
     if (!choice) return;
     if (choice === "all") mode = "all"; else { mode = "from"; from = choice.from; }
   }
-  try { await call("ship_bom_save", { p_box: boxId, p_lines: lines, p_mode: mode, p_from: from }); notify(); await refresh(); toast("包材清單已儲存"); }
+  try {
+    if (kind === "item") await call("ship_item_bom_save", { p_item: boxId, p_lines: lines, p_mode: mode, p_from: from });
+    else await call("ship_bom_save", { p_box: boxId, p_lines: lines, p_mode: mode, p_from: from });
+    notify(); await refresh(); toast("包材清單已儲存");
+  }
   catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
 }
 async function settingAction(btn) {
@@ -1229,9 +1287,11 @@ async function settingAction(btn) {
   const x = list && id ? list.find(v => v.id === id) : null;
   const nm = x ? (kind === "item" ? `${x.code} ${x.name}` : x.name) : "";
   try {
+    if (a === "wizard") return openWizard();
     if (a === "new") return editSetting(kind, null);
     if (a === "edit") return editSetting(kind, id);
-    if (a === "bom") return editBom(id);
+    if (a === "bom") return editBom(id, "box");
+    if (a === "ibom") return editBom(id, "item");
     if (a === "up" || a === "down") {
       const ids = list.map(v => v.id); const i = ids.indexOf(id); const j = a === "up" ? i - 1 : i + 1;
       if (j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]];
@@ -1248,6 +1308,199 @@ async function settingAction(btn) {
     }
     notify(); await refresh();
   } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message, a === "hide" ? "不能下架" : a === "del" ? "不能刪除" : "無法完成"); }
+}
+
+
+/* =================== 新增禮盒精靈 =================== */
+let WZ = null;
+function openWizard() {
+  WZ = { step: 1, name: "", allMonths: true, months: [], newItems: [], extend: new Set(), newPacks: [], boxBom: [], np: 0 };
+  const o = document.createElement("div"); o.className = "overlay"; o.id = "wz";
+  o.innerHTML = `<div class="modal wide" role="dialog" aria-modal="true" style="width:min(760px,100%)"><div id="wz-body"></div>
+    <p class="err" id="wz-err" role="alert"></p>
+    <div class="acts"><button type="button" class="btn ghost" data-wz="cancel">取消</button><span style="flex:1"></span>
+      <button type="button" class="btn ghost" data-wz="back">上一步</button><button type="button" class="btn primary" data-wz="next">下一步</button></div></div>`;
+  document.body.appendChild(o);
+  const close = () => { openModals.delete(close); o.remove(); WZ = null; };
+  openModals.add(close);
+  o.addEventListener("click", wizClick);
+  o.addEventListener("change", e => { if (e.target.name === "wz-mm") { wizSync(); wizRender(); } });
+  o.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") close(); });
+  wizRender();
+}
+const wizPacks = () => [
+  ...S.cfg.packs.filter(p => !p.hidden_from).map(p => ({ v: String(p.id), t: p.name + (p.unit ? `（${p.unit}）` : "") })),
+  ...WZ.newPacks.map(p => ({ v: p.tmp, t: p.name + (p.unit ? `（${p.unit}）` : "") + "　新" }))
+];
+const packLabel = v => (wizPacks().find(x => x.v === String(v)) || { t: "（已移除）" }).t.replace("　新", "（新）");
+function linesHtml(key, lines) {
+  const opts = wizPacks();
+  return `<div class="wl-list">${lines.map((l, i) => `<div class="wl" data-list="${key}" data-i="${i}" style="display:grid;grid-template-columns:1fr 100px auto;gap:8px;margin-bottom:6px">
+      <select data-f="pack"><option value="">選擇包材</option>${opts.map(o => `<option value="${o.v}" ${String(l.pack) === o.v ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select>
+      <input type="number" min="0" step="any" data-f="qty" placeholder="數量" value="${l.qty ?? ""}">
+      <button type="button" class="btn link danger-text" data-wz="rmline" data-list="${key}" data-i="${i}">移除</button></div>`).join("")}
+    <button type="button" class="btn link" data-wz="addline" data-list="${key}">＋ 加一項包材</button></div>`;
+}
+function newPackForm() {
+  return `<div style="background:#f7f5ee;border-radius:10px;padding:10px 12px;margin-top:12px">
+    <div style="font-size:13px;font-weight:500;margin-bottom:6px">清單裡沒有要的包材？在這裡新增</div>
+    <div style="display:grid;grid-template-columns:1fr 90px 100px auto;gap:8px;align-items:end">
+      <div><label class="lbl">包材名稱</label><input type="text" id="np-name" maxlength="40" style="width:100%"></div>
+      <div><label class="lbl">單位</label><input type="text" id="np-unit" maxlength="10" placeholder="個" style="width:100%"></div>
+      <div><label class="lbl">安全庫存量</label><input type="number" id="np-safety" min="0" step="1" value="0" style="width:100%"></div>
+      <button type="button" class="btn ghost" data-wz="addpack">新增包材</button></div>
+    ${WZ.newPacks.length ? `<div style="font-size:12.5px;margin-top:8px" class="muted">這次新增的包材：${WZ.newPacks.map((p, i) => `${esc(p.name)} <button type="button" class="btn link danger-text" data-wz="rmpack" data-i="${i}" style="font-size:12px">移除</button>`).join("　")}</div>` : ""}
+  </div>`;
+}
+function extendCandidates() {
+  if (WZ.allMonths) return S.cfg.items.filter(i => i.months && !i.hidden_from);
+  return S.cfg.items.filter(i => i.months && !i.hidden_from && WZ.months.some(m => !i.months.includes(m)));
+}
+function monthsLabel() { return WZ.allMonths ? "所有月份" : WZ.months.map(m => `${m.slice(0, 4)}年${Number(m.slice(5))}月`).join("、"); }
+function wizRender() {
+  const b = $("#wz-body"); if (!b) return;
+  $("#wz-err").textContent = "";
+  const steps = ["禮盒名稱與月份", "內容物", "禮盒的包材", "確認"];
+  const head = `<h3 style="margin-bottom:4px">新增禮盒</h3><div style="display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap">${steps.map((t, i) =>
+    `<span style="font-size:12.5px;padding:3px 10px;border-radius:999px;${i + 1 === WZ.step ? "background:var(--green);color:#fff" : i + 1 < WZ.step ? "background:var(--green-soft);color:var(--green)" : "background:#f1eee6;color:var(--soft)"}">${i + 1}. ${t}</span>`).join("")}</div>`;
+  let body = "";
+  if (WZ.step === 1) {
+    body = `<div class="field"><label class="lbl" for="wz-name">禮盒名稱</label><input type="text" id="wz-name" maxlength="40" value="${esc(WZ.name)}" style="width:100%" placeholder="例如：中秋限定禮盒"></div>
+      <div class="field"><span class="lbl">這款禮盒出現在哪些月份</span>
+        <div class="radios"><label><input type="radio" name="wz-mm" value="all" ${WZ.allMonths ? "checked" : ""}>所有月份（常態禮盒）</label>
+        <label><input type="radio" name="wz-mm" value="some" ${!WZ.allMonths ? "checked" : ""}>只在選定的月份（檔期限定）</label></div>
+        <div class="mgrid" id="wz-months" ${WZ.allMonths ? "hidden" : ""}>${monthPicker(WZ.months)}</div></div>`;
+  } else if (WZ.step === 2) {
+    const cands = extendCandidates();
+    body = `<p class="muted" style="margin-top:0">這款禮盒如果有<b>新的口味或品項</b>，在這裡新增；只用現有內容物的話，直接按下一步。新內容物預設跟禮盒同月份（${esc(monthsLabel())}）。</p>
+      ${WZ.newItems.map((it, i) => `<div style="border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:10px">
+        <div style="display:grid;grid-template-columns:80px 1fr 70px 90px auto;gap:8px;align-items:end">
+          <div><label class="lbl">代號</label><input type="text" data-item="${i}" data-f="code" maxlength="10" value="${esc(it.code)}" style="width:100%"></div>
+          <div><label class="lbl">全名</label><input type="text" data-item="${i}" data-f="name" maxlength="40" value="${esc(it.name)}" style="width:100%"></div>
+          <div><label class="lbl">單位</label><input type="text" data-item="${i}" data-f="unit" maxlength="10" value="${esc(it.unit)}" style="width:100%"></div>
+          <div><label class="lbl">安全庫存量</label><input type="number" data-item="${i}" data-f="safety" min="0" step="1" value="${it.safety}" style="width:100%"></div>
+          <button type="button" class="btn link danger-text" data-wz="rmitem" data-i="${i}">移除</button></div>
+        ${WZ.allMonths ? "" : `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="allMonths" ${it.allMonths ? "checked" : ""}>以後常態禮盒也會用，改成所有月份</label>`}
+        <div style="margin-top:10px"><span class="lbl">製作用包材（做 1 ${esc(it.unit || "個")}用掉幾個，不用就不填）</span>${linesHtml("item:" + i, it.bom)}</div>
+      </div>`).join("")}
+      <button type="button" class="btn ghost" data-wz="additem">＋ 新增一個內容物</button>
+      ${cands.length ? `<div style="margin-top:18px"><h4 style="margin:0 0 4px;font-size:14px">沿用現有內容物</h4>
+        <p class="muted" style="margin:0 0 8px;font-size:13px">這些內容物目前不會出現在${esc(monthsLabel())}的出貨表上。這款禮盒要用的話請勾選，系統會把這款的月份加進它的出現月份，原本的月份不變。</p>
+        ${cands.map(c => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0"><input type="checkbox" data-extend="${c.id}" ${WZ.extend.has(c.id) ? "checked" : ""}>
+          <b>${esc(c.code)}</b> ${esc(c.name)}<span class="muted" style="font-size:12px">目前：${esc(monthsText(c.months))}</span></label>`).join("")}</div>` : ""}
+      ${WZ.newItems.length ? newPackForm() : ""}`;
+  } else if (WZ.step === 3) {
+    body = `<p class="muted" style="margin-top:0">一盒「${esc(WZ.name)}」會用到哪些包材、各幾個，在出貨那天扣掉。</p>
+      ${linesHtml("box", WZ.boxBom)}${newPackForm()}`;
+  } else {
+    const li = (t, v) => `<tr><td style="color:var(--soft);white-space:nowrap;vertical-align:top;padding:6px 12px 6px 0">${t}</td><td style="padding:6px 0">${v}</td></tr>`;
+    const lines = arr => arr.length ? arr.map(l => `${esc(packLabel(l.pack))} × ${esc(l.qty)}`).join("、") : `<span class="muted">無</span>`;
+    body = `<p style="margin-top:0">確認以下內容，按「確認新增」會一次全部存進去。</p><table style="width:100%;font-size:14px;border-collapse:collapse">
+      ${li("禮盒", `<b>${esc(WZ.name)}</b>`)}${li("出現月份", esc(monthsLabel()))}${li("禮盒包材", lines(WZ.boxBom))}
+      ${li("新包材", WZ.newPacks.length ? WZ.newPacks.map(p => `${esc(p.name)}（${esc(p.unit || "—")}，安全量 ${p.safety}）`).join("、") : `<span class="muted">無</span>`)}
+      ${li("新內容物", WZ.newItems.length ? WZ.newItems.map(it => `<b>${esc(it.code)}</b> ${esc(it.name)}（${esc(it.unit || "—")}，安全量 ${it.safety}，${it.allMonths || WZ.allMonths ? "所有月份" : esc(monthsLabel())}）<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>`).join("<br>") : `<span class="muted">無</span>`)}
+      ${li("沿用內容物", WZ.extend.size ? [...WZ.extend].map(id => { const x = S.cfg.items.find(i => i.id === id); return x ? `${esc(x.code)} ${esc(x.name)}` : ""; }).join("、") + `<br><span class="muted" style="font-size:12.5px">會加上${esc(monthsLabel())}</span>` : `<span class="muted">無</span>`)}
+    </table>`;
+  }
+  b.innerHTML = head + body;
+  $('[data-wz="back"]').style.visibility = WZ.step === 1 ? "hidden" : "visible";
+  $('[data-wz="next"]').textContent = WZ.step === 4 ? "確認新增" : "下一步";
+  const first = b.querySelector("input[type=text]"); if (first && WZ.step === 1) first.focus();
+}
+function wizSync() {
+  const b = $("#wz-body"); if (!b) return;
+  if (WZ.step === 1) {
+    WZ.name = $("#wz-name", b).value.trim();
+    const r = $('input[name="wz-mm"]:checked', b); WZ.allMonths = !r || r.value === "all";
+    const boxes = b.querySelectorAll("#wz-months input[type=checkbox]");
+    if (boxes.length) WZ.months = [...boxes].filter(i => i.checked).map(i => i.value).sort();
+  }
+  b.querySelectorAll("[data-item]").forEach(el => {
+    const it = WZ.newItems[Number(el.dataset.item)]; if (!it) return;
+    if (el.dataset.f === "allMonths") it.allMonths = el.checked;
+    else if (el.dataset.f === "safety") it.safety = el.value.trim() === "" ? 0 : Number(el.value);
+    else it[el.dataset.f] = el.value.trim();
+  });
+  b.querySelectorAll("[data-extend]").forEach(el => { const id = Number(el.dataset.extend); el.checked ? WZ.extend.add(id) : WZ.extend.delete(id); });
+  b.querySelectorAll(".wl").forEach(row => {
+    const list = row.dataset.list === "box" ? WZ.boxBom : WZ.newItems[Number(row.dataset.list.slice(5))].bom;
+    const l = list[Number(row.dataset.i)]; if (!l) return;
+    l.pack = $('[data-f="pack"]', row).value; l.qty = $('[data-f="qty"]', row).value.trim();
+  });
+}
+function checkLines(lines, where) {
+  for (const l of lines) {
+    if (!l.pack && (l.qty === "" || l.qty === undefined)) continue;
+    if (!l.pack) return `${where}有一項沒選包材。`;
+    if (!(Number(l.qty) > 0)) return `${where}的「${packLabel(l.pack)}」請填大於 0 的數量。`;
+  }
+  return "";
+}
+const cleanLines = lines => lines.filter(l => l.pack && Number(l.qty) > 0).map(l => ({ pack: /^\d+$/.test(l.pack) ? Number(l.pack) : l.pack, qty: Number(l.qty) }));
+function wizValidate() {
+  if (WZ.step === 1) {
+    if (!WZ.name) return "請輸入禮盒名稱。";
+    if (S.cfg.boxes.some(b => b.name === WZ.name)) return `禮盒「${WZ.name}」已經有了。`;
+    if (!WZ.allMonths && !WZ.months.length) return "請至少勾選一個月份，或選「所有月份」。";
+    for (const id of [...WZ.extend]) if (!extendCandidates().some(c => c.id === id)) WZ.extend.delete(id);
+  }
+  if (WZ.step === 2) {
+    const codes = new Set(S.cfg.items.map(i => i.code));
+    for (const it of WZ.newItems) {
+      if (!it.code || !it.name) return "每個新內容物都要填代號和全名。";
+      if (codes.has(it.code)) return `內容物代號「${it.code}」已經有了，請換一個。`;
+      codes.add(it.code);
+      if (!Number.isInteger(it.safety) || it.safety < 0) return `「${it.name}」的安全庫存量要是 0 以上的整數。`;
+      const m = checkLines(it.bom, `「${it.name}」的製作用包材`); if (m) return m;
+    }
+  }
+  if (WZ.step === 3) { const m = checkLines(WZ.boxBom, "禮盒的包材清單"); if (m) return m; }
+  return "";
+}
+async function wizClick(e) {
+  const t = e.target.closest("[data-wz]"); if (!t) return;
+  const a = t.dataset.wz;
+  if (a === "cancel") { [...openModals].pop()(); return; }
+  wizSync();
+  const err = $("#wz-err");
+  if (a === "next") {
+    const m = wizValidate(); if (m) { err.textContent = m; return; }
+    if (WZ.step < 4) { WZ.step++; return wizRender(); }
+    t.disabled = true;
+    try {
+      await call("ship_box_wizard", { p: {
+        box: { name: WZ.name, months: WZ.allMonths ? null : WZ.months },
+        new_packs: WZ.newPacks.map(p => ({ tmp: p.tmp, name: p.name, unit: p.unit, safety: p.safety })),
+        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.name, unit: it.unit, safety: it.safety, all_months: WZ.allMonths || it.allMonths, bom: cleanLines(it.bom) })),
+        extend_items: [...WZ.extend],
+        box_bom: cleanLines(WZ.boxBom)
+      } });
+      const name = WZ.name;
+      [...openModals].pop()();
+      notify(); await refresh(); toast(`已新增「${name}」`);
+    } catch (x) { if (!(x instanceof Handled)) err.textContent = x.message; t.disabled = false; }
+    return;
+  }
+  if (a === "back") { if (WZ.step > 1) WZ.step--; return wizRender(); }
+  if (a === "additem") WZ.newItems.push({ code: "", name: "", unit: "", safety: 0, allMonths: false, bom: [] });
+  if (a === "rmitem") WZ.newItems.splice(Number(t.dataset.i), 1);
+  if (a === "addline" || a === "rmline") {
+    const key = t.dataset.list; const list = key === "box" ? WZ.boxBom : WZ.newItems[Number(key.slice(5))].bom;
+    if (a === "addline") list.push({ pack: "", qty: "" }); else list.splice(Number(t.dataset.i), 1);
+  }
+  if (a === "addpack") {
+    const name = $("#np-name").value.trim(), unit = $("#np-unit").value.trim(), sf = $("#np-safety").value.trim();
+    if (!name) { err.textContent = "請輸入包材名稱。"; return; }
+    if (S.cfg.packs.some(p => p.name === name) || WZ.newPacks.some(p => p.name === name)) { err.textContent = `包材「${name}」已經有了，請直接從清單選。`; return; }
+    if (sf !== "" && !/^\d+$/.test(sf)) { err.textContent = "安全庫存量要是 0 以上的整數。"; return; }
+    WZ.newPacks.push({ tmp: "np" + (++WZ.np), name, unit, safety: sf === "" ? 0 : Number(sf) });
+  }
+  if (a === "rmpack") {
+    const p = WZ.newPacks.splice(Number(t.dataset.i), 1)[0];
+    const drop = list => list.forEach(l => { if (l.pack === p.tmp) l.pack = ""; });
+    drop(WZ.boxBom); WZ.newItems.forEach(it => drop(it.bom));
+  }
+  wizRender();
 }
 
 /* =================== 紀錄 =================== */
@@ -1345,9 +1598,10 @@ document.addEventListener("click", e => {
 });
 window.addEventListener("beforeunload", e => {
   const o = S.touched && orderOf(S.touched);
-  if (o && (!o.kind || (o.card !== true && o.card !== false))) { e.preventDefault(); e.returnValue = ""; }
+  if (o && !o.kind) { e.preventDefault(); e.returnValue = ""; }
 });
-$("#scroll").addEventListener("scroll", () => { if (S.edit) placeEditor(); closeMenu(); }, { passive: true });
+// 選單和輸入框都放在捲動區裡，會跟著內容一起捲動，不需要在捲動時關掉
+$("#scroll").addEventListener("scroll", () => { if (S.edit) placeEditor(); }, { passive: true });
 
 boot();
 </script>
