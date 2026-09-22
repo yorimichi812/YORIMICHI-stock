@@ -66,6 +66,7 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .sync{font-size:12px;color:var(--soft);display:flex;align-items:center;gap:6px;margin-left:auto}
 .sync i{width:7px;height:7px;border-radius:50%;background:#3E9B6E;display:inline-block}
 .sync.bad{color:var(--alert)} .sync.bad i{background:var(--alert)}
+.sync[data-rt="off"] i{background:#e0a030}
 
 .bar{grid-column:2;display:flex;align-items:center;gap:8px;padding:6px 16px;border-top:1px solid var(--rule);background:#fff;flex-wrap:wrap}
 .months{display:flex;gap:4px;flex-wrap:wrap}
@@ -469,9 +470,11 @@ function startSync() {
     .on("presence", { event: "sync" }, () => {
       const st = S.channel.presenceState(); const map = {};
       for (const k in st) { if (k === S.me.id) continue; for (const p of st[k]) if (p.cell) (map[p.cell] = map[p.cell] || []).push(p.name); }
-      S.presence = map; paintPresence();
+      S.presenceRt = map; mergePresence();
     })
-    .subscribe(status => { if (status === "SUBSCRIBED") trackPresence(S.cur); });
+    .subscribe(status => { S.rt = status; renderSync(); if (status === "SUBSCRIBED") trackPresence(S.cur); });
+  S.pingTimer = setInterval(() => pingPresence(), 3000);
+  pingPresence();
   S.timer = setInterval(() => refresh(), POLL_MS);
   S.revTimer = setInterval(checkRev, REV_MS);
 }
@@ -485,13 +488,35 @@ async function checkRev() {
     S.revSeen = r.data;
   } catch (e) {}
 }
+// 名字標籤：透過資料庫回報自己在哪一格、取回別人在哪一格（即時通道沒連上也能用）
+let pingT = null;
+async function pingPresence() {
+  if (!S.me || !S.me.role || S.pingOff || document.hidden) return;
+  try {
+    const r = await sb.rpc("ship_presence_ping", { p_cell: S.cur || null });
+    if (r.error) { if (/ship_presence_ping|function/i.test(r.error.message || "")) S.pingOff = true; return; }
+    const map = {};
+    for (const p of r.data || []) (map[p.cell] = map[p.cell] || []).push(p.name);
+    S.presenceDb = map; mergePresence();
+  } catch (e) {}
+}
+function mergePresence() {
+  const out = {};
+  for (const src of [S.presenceRt || {}, S.presenceDb || {}])
+    for (const k in src) out[k] = [...new Set([...(out[k] || []), ...src[k]])];
+  S.presence = out; paintPresence();
+}
 function stopSync() {
+  if (S.pingTimer) clearInterval(S.pingTimer); S.pingTimer = null;
   if (S.timer) clearInterval(S.timer); S.timer = null;
   if (S.revTimer) clearInterval(S.revTimer); S.revTimer = null;
   if (S.channel) sb.removeChannel(S.channel); S.channel = null;
 }
 function notify() { try { S.channel && S.channel.send({ type: "broadcast", event: "changed", payload: { t: Date.now() } }); } catch (e) {} }
-function trackPresence(cell) { try { S.channel && S.channel.track({ name: S.me.name, cell }); } catch (e) {} }
+function trackPresence(cell) {
+  try { S.channel && S.channel.track({ name: S.me.name, cell }); } catch (e) {}
+  clearTimeout(pingT); pingT = setTimeout(pingPresence, 150);   // 換格子時馬上回報一次
+}
 let rT = null;
 function scheduleRefresh() { clearTimeout(rT); rT = setTimeout(() => refresh(), 80); }
 let chain = Promise.resolve(), queued = 0;
@@ -504,7 +529,9 @@ function refresh() {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S.me && S.me.role) refresh(); });
 function renderSync() {
   $("#sync").classList.toggle("bad", !S.syncOk);
-  $("#sync-text").textContent = S.syncOk ? (S.lastSync ? `即時同步中，${clockFmt.format(S.lastSync)} 更新` : "連線中") : "連線中斷，稍後自動重試";
+  $("#sync-text").textContent = S.syncOk ? (S.lastSync ? `同步中，${clockFmt.format(S.lastSync)} 更新` : "連線中") : "連線中斷，稍後自動重試";
+  $("#sync").title = S.rt === "SUBSCRIBED" ? "即時通道已連線" : "即時通道未連線，改用每 3 秒檢查";
+  $("#sync").dataset.rt = S.rt === "SUBSCRIBED" ? "on" : "off";
 }
 
 function applyCfg(b) {
