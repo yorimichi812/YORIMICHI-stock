@@ -231,7 +231,8 @@ const SUPABASE_URL = "https://ogjgxzzymdjyxcdnzuee.supabase.co";
 const SUPABASE_KEY = "sb_publishable_bNSESW3KicUfKck1MWXgRw_UpUZJCAO";
 /* ======================================================================= */
 const PIN_TAIL = "-ld24";            // 與庫存系統相同的密碼補字規則
-const POLL_MS = 20000;
+const POLL_MS = 20000;   // 保險用的完整重新整理（版本號檢查沒啟用時也靠它）
+const REV_MS = 3000;     // 每 3 秒檢查一次版本號，有變動才重新抓資料
 // 登入只存在這個分頁：關掉分頁或瀏覽器就登出，重新整理不用重登。順便清掉以前存在瀏覽器裡的舊登入。
 try { Object.keys(localStorage).forEach(k => { if (k.startsWith("sb-") && k.endsWith("-auth-token")) localStorage.removeItem(k); }); } catch (e) {}
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: window.sessionStorage } });
@@ -462,15 +463,27 @@ function startSync() {
     })
     .subscribe(status => { if (status === "SUBSCRIBED") trackPresence(S.cur); });
   S.timer = setInterval(() => refresh(), POLL_MS);
+  S.revTimer = setInterval(checkRev, REV_MS);
+}
+// 問資料庫目前的版本號；跟上次不同就代表有人改了東西
+async function checkRev() {
+  if (document.hidden || !S.me || !S.me.role || S.revOff) return;
+  try {
+    const r = await sb.rpc("ship_rev");
+    if (r.error) { if (/ship_rev|function/i.test(r.error.message || "")) S.revOff = true; return; }
+    if (S.rev !== undefined && r.data !== S.rev) refresh();
+    S.revSeen = r.data;
+  } catch (e) {}
 }
 function stopSync() {
   if (S.timer) clearInterval(S.timer); S.timer = null;
+  if (S.revTimer) clearInterval(S.revTimer); S.revTimer = null;
   if (S.channel) sb.removeChannel(S.channel); S.channel = null;
 }
 function notify() { try { S.channel && S.channel.send({ type: "broadcast", event: "changed", payload: { t: Date.now() } }); } catch (e) {} }
 function trackPresence(cell) { try { S.channel && S.channel.track({ name: S.me.name, cell }); } catch (e) {} }
 let rT = null;
-function scheduleRefresh() { clearTimeout(rT); rT = setTimeout(() => refresh(), 250); }
+function scheduleRefresh() { clearTimeout(rT); rT = setTimeout(() => refresh(), 80); }
 let chain = Promise.resolve(), queued = 0;
 function refresh() {
   if (queued > 0) return chain;
@@ -493,21 +506,28 @@ function applyCfg(b) {
 
 async function loadData(force) {
   try {
-    const b = await call("ship_bootstrap");
+    let rev;
+    if (!S.revOff) { try { const r = await sb.rpc("ship_rev"); if (!r.error) rev = r.data; } catch (e) {} }
+    const month = S.month, view = S.view;
+    const [b, o, inv] = await Promise.all([
+      call("ship_bootstrap"),
+      ["sheet", "stats"].includes(view) ? call("ship_month", { p_month: month + "-01" }) : null,
+      view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null
+    ]);
     if (!b.me.role) return boot();
     if (b.me.role !== S.me.role) { S.me = b.me; return boot(); }
+    if (month !== S.month || view !== S.view) return;   // 抓的途中換了月份或分頁，丟掉這次的結果
     S.today = b.today;
     let changed = applyCfg(b) || force;
-    if (["sheet", "stats"].includes(S.view)) {
-      const o = await call("ship_month", { p_month: S.month + "-01" });
+    if (o) {
       const j = JSON.stringify(o);
       if (j !== S.ordersJson) { S.ordersJson = j; S.orders = o; changed = true; }
     }
-    if (S.view === "stock") {
-      const inv = await call("ship_inventory", { p_month: S.month + "-01" });
+    if (inv) {
       const j = JSON.stringify(inv);
       if (j !== S.invJson) { S.invJson = j; S.inv = inv; changed = true; }
     }
+    if (rev !== undefined) S.rev = rev;
     if (S.view === "logs" && force) await loadLogs(true);
     if (S.view === "people") { const p = await call("ship_people"); const j = JSON.stringify(p); if (j !== JSON.stringify(S.people) || force) { S.people = p; changed = true; } }
     S.syncOk = true; S.lastSync = new Date();
