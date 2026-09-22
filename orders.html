@@ -1242,7 +1242,7 @@ function renderStock() {
     const act = r.open !== 0 || Object.keys(r.make).length || Object.keys(r.use).length;
     return act || visibleIn(x, ym);
   });
-  const items = active(S.cfg.items, "items"), packs = active(S.cfg.packs, "packs");
+  const items = active(S.cfg.items.filter(i => !i.no_stock), "items"), packs = active(S.cfg.packs, "packs");
   const edit = canEdit();
   const head1 = [], headW = [], head2 = [];
   const mo = Number(ym.slice(5));
@@ -1327,8 +1327,8 @@ function renderSettings() {
   return `<div class="page">
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
-    ${items.length ? `<table class="plain"><tr><th>代號</th><th>全名</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
-      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(x.unit)}</td><td class="num">${fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id, "item")}</td><td>${ops("item", x, items, `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
+    ${items.length ? `<table class="plain"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
+      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
     <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
     ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th><th></th></tr>
       ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td><td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
@@ -1356,22 +1356,26 @@ async function editSetting(kind, id) {
   const title = { item: "內容物", box: "禮盒款式", tag: "吊牌選項", pack: "包材" }[kind];
   const hasMonths = kind === "item" || kind === "box";
   const body = `
-    ${kind === "item" ? `<div class="row2 field"><div><label class="lbl" for="s-code">代號（出貨表欄位）</label><input type="text" id="s-code" maxlength="10" value="${esc(x ? x.code : "")}" style="width:100%"></div>
+    ${kind === "item" ? `<div class="row2 field"><div><label class="lbl" for="s-code">代號（出貨表）</label><input type="text" id="s-code" maxlength="10" value="${esc(x ? x.code : "")}" style="width:100%"></div>
       <div><label class="lbl" for="s-name">全名（庫存表）</label><input type="text" id="s-name" maxlength="40" value="${esc(x ? x.name : "")}" style="width:100%"></div></div>`
       : `<div class="field"><label class="lbl" for="s-name">名稱</label><input type="text" id="s-name" maxlength="40" value="${esc(x ? x.name : "")}" style="width:100%"></div>`}
+    ${kind === "item" ? `<label style="display:flex;align-items:center;gap:6px;margin:-2px 0 12px;font-size:13.5px"><input type="checkbox" id="s-nostock" ${x && x.no_stock ? "checked" : ""}>不計算庫存（不會出現在庫存表，例如不自己做的馬卡龍）</label>` : ""}
     ${kind === "item" || kind === "pack" ? `<div class="row2 field"><div><label class="lbl" for="s-unit">單位</label><input type="text" id="s-unit" maxlength="10" placeholder="條、盤、袋、個" value="${esc(x ? x.unit : "")}" style="width:100%"></div>
-      <div><label class="lbl" for="s-safety">安全庫存量</label><input type="number" id="s-safety" min="0" step="1" value="${x ? x.safety : 0}" style="width:100%"></div></div>` : ""}
+      <div id="s-safety-wrap" ${x && x.no_stock ? "hidden" : ""}><label class="lbl" for="s-safety">安全庫存量</label><input type="number" id="s-safety" min="0" step="1" value="${x ? x.safety : 0}" style="width:100%"></div></div>` : ""}
     ${hasMonths ? `<div class="field"><span class="lbl">出現在哪些月份</span>
       <div class="radios"><label><input type="radio" name="s-mm" value="all" ${!x || !x.months ? "checked" : ""}>所有月份</label>
       <label><input type="radio" name="s-mm" value="some" ${x && x.months ? "checked" : ""}>只在選定的月份</label></div>
       <div class="mgrid" id="s-months" ${!x || !x.months ? "hidden" : ""}>${monthPicker(x && x.months)}</div></div>` : ""}`;
   await modal({
     title: (x ? "編輯" : "新增") + title, ok: x ? "儲存" : "新增", body, wide: hasMonths,
-    onOpen: w => { w.querySelectorAll('input[name="s-mm"]').forEach(r => r.onchange = () => { $("#s-months", w).hidden = $('input[name="s-mm"]:checked', w).value === "all"; }); },
+    onOpen: w => {
+      w.querySelectorAll('input[name="s-mm"]').forEach(r => r.onchange = () => { $("#s-months", w).hidden = $('input[name="s-mm"]:checked', w).value === "all"; });
+      const ns = $("#s-nostock", w); if (ns) ns.onchange = () => { $("#s-safety-wrap", w).hidden = ns.checked; };
+    },
     onOk: async ({ root, setErr }) => {
       const data = { name: $("#s-name", root).value.trim() };
       if (!data.name) { setErr("請輸入名稱。"); return false; }
-      if (kind === "item") { data.code = $("#s-code", root).value.trim(); if (!data.code) { setErr("請輸入代號。"); return false; } }
+      if (kind === "item") { data.code = $("#s-code", root).value.trim(); if (!data.code) { setErr("請輸入代號。"); return false; } data.no_stock = $("#s-nostock", root).checked; }
       if (kind === "item" || kind === "pack") {
         data.unit = $("#s-unit", root).value.trim();
         const s = $("#s-safety", root).value.trim(); if (s !== "" && !/^\d+$/.test(s)) { setErr("安全庫存量要是 0 以上的整數。"); return false; }
@@ -1480,7 +1484,19 @@ function openWizard() {
   const close = () => { openModals.delete(close); o.remove(); WZ = null; };
   openModals.add(close);
   o.addEventListener("click", wizClick);
-  o.addEventListener("change", e => { if (e.target.name === "wz-mm") { wizSync(); wizRender(); } });
+  o.addEventListener("change", async e => {
+    if (e.target.name === "wz-mm" || e.target.dataset.f === "noStock") { wizSync(); wizRender(); return; }
+    if (e.target.matches(".wl select") && e.target.value === "__new__") {
+      const row = e.target.closest(".wl");
+      wizSync();
+      const list = row.dataset.list === "box" ? WZ.boxBom : WZ.newItems[Number(row.dataset.list.slice(5))].bom;
+      const line = list[Number(row.dataset.i)];
+      line.pack = "";
+      const tmp = await newPackPrompt();
+      if (tmp) line.pack = tmp;
+      wizRender();
+    }
+  });
   o.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") close(); });
   wizRender();
 }
@@ -1492,10 +1508,28 @@ const packLabel = v => (wizPacks().find(x => x.v === String(v)) || { t: "（已�
 function linesHtml(key, lines) {
   const opts = wizPacks();
   return `<div class="wl-list">${lines.map((l, i) => `<div class="wl" data-list="${key}" data-i="${i}" style="display:grid;grid-template-columns:1fr 100px auto;gap:8px;margin-bottom:6px">
-      <select data-f="pack"><option value="">選擇包材</option>${opts.map(o => `<option value="${o.v}" ${String(l.pack) === o.v ? "selected" : ""}>${esc(o.t)}</option>`).join("")}</select>
+      <select data-f="pack"><option value="">選擇包材</option>${opts.map(o => `<option value="${o.v}" ${String(l.pack) === o.v ? "selected" : ""}>${esc(o.t)}</option>`).join("")}<option value="__new__">＋ 新增包材…</option></select>
       <input type="number" min="0" step="any" data-f="qty" placeholder="數量" value="${l.qty ?? ""}">
       <button type="button" class="btn link danger-text" data-wz="rmline" data-list="${key}" data-i="${i}">移除</button></div>`).join("")}
     <button type="button" class="btn link" data-wz="addline" data-list="${key}">＋ 加一項包材</button></div>`;
+}
+// 精靈裡在當下那一格新增包材，回傳暫時代號
+function newPackPrompt() {
+  return modal({
+    title: "新增包材", ok: "新增並選用",
+    body: `<div class="field"><label class="lbl" for="np-name">包材名稱</label><input type="text" id="np-name" maxlength="40" style="width:100%"></div>
+      <div class="row2 field"><div><label class="lbl" for="np-unit">單位</label><input type="text" id="np-unit" maxlength="10" placeholder="個" style="width:100%"></div>
+      <div><label class="lbl" for="np-safety">安全庫存量</label><input type="number" id="np-safety" min="0" step="1" value="0" style="width:100%"></div></div>`,
+    onOk: async ({ root, setErr }) => {
+      const name = $("#np-name", root).value.trim(), unit = $("#np-unit", root).value.trim(), sf = $("#np-safety", root).value.trim();
+      if (!name) { setErr("請輸入包材名稱。"); return false; }
+      if (S.cfg.packs.some(p => p.name === name) || WZ.newPacks.some(p => p.name === name)) { setErr(`包材「${name}」已經有了，請直接從清單選。`); return false; }
+      if (sf !== "" && !/^\d+$/.test(sf)) { setErr("安全庫存量要是 0 以上的整數。"); return false; }
+      const tmp = "np" + (++WZ.np);
+      WZ.newPacks.push({ tmp, name, unit, safety: sf === "" ? 0 : Number(sf) });
+      return tmp;
+    }
+  });
 }
 function newPackForm() {
   return `<div style="background:#f7f5ee;border-radius:10px;padding:10px 12px;margin-top:12px">
@@ -1530,31 +1564,33 @@ function wizRender() {
     const cands = extendCandidates();
     body = `<p class="muted" style="margin-top:0">這款禮盒如果有<b>新的口味或品項</b>，在這裡新增；只用現有內容物的話，直接按下一步。新內容物預設跟禮盒同月份（${esc(monthsLabel())}）。</p>
       ${WZ.newItems.map((it, i) => `<div style="border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:10px">
-        <div style="display:grid;grid-template-columns:80px 1fr 70px 90px auto;gap:8px;align-items:end">
-          <div><label class="lbl">代號</label><input type="text" data-item="${i}" data-f="code" maxlength="10" value="${esc(it.code)}" style="width:100%"></div>
-          <div><label class="lbl">全名</label><input type="text" data-item="${i}" data-f="name" maxlength="40" value="${esc(it.name)}" style="width:100%"></div>
+        <div style="display:grid;grid-template-columns:110px 1fr 70px 90px auto;gap:8px;align-items:end">
+          <div><label class="lbl">代號（出貨表）</label><input type="text" data-item="${i}" data-f="code" maxlength="10" value="${esc(it.code)}" style="width:100%"></div>
+          <div><label class="lbl">全名（庫存表）</label><input type="text" data-item="${i}" data-f="name" maxlength="40" value="${esc(it.name)}" style="width:100%"></div>
           <div><label class="lbl">單位</label><input type="text" data-item="${i}" data-f="unit" maxlength="10" value="${esc(it.unit)}" style="width:100%"></div>
-          <div><label class="lbl">安全庫存量</label><input type="number" data-item="${i}" data-f="safety" min="0" step="1" value="${it.safety}" style="width:100%"></div>
+          <div ${it.noStock ? 'style="visibility:hidden"' : ""}><label class="lbl">安全庫存量</label><input type="number" data-item="${i}" data-f="safety" min="0" step="1" value="${it.safety}" style="width:100%"></div>
           <button type="button" class="btn link danger-text" data-wz="rmitem" data-i="${i}">移除</button></div>
-        ${WZ.allMonths ? "" : `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="allMonths" ${it.allMonths ? "checked" : ""}>以後常態禮盒也會用，改成所有月份</label>`}
-        <div style="margin-top:10px"><span class="lbl">製作用包材（做 1 ${esc(it.unit || "個")}用掉幾個，不用就不填）</span>${linesHtml("item:" + i, it.bom)}</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="noStock" ${it.noStock ? "checked" : ""}>不計算庫存（不會出現在庫存表，例如不自己做的馬卡龍）</label>
+        ${WZ.allMonths ? "" : `<label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="allMonths" ${it.allMonths ? "checked" : ""}>以後常態禮盒也會用，改成所有月份</label>`}
+        ${it.noStock ? "" : `<div style="margin-top:10px"><span class="lbl">製作用包材（做 1 ${esc(it.unit || "個")}用掉幾個，不用就不填）</span>${linesHtml("item:" + i, it.bom)}</div>`}
       </div>`).join("")}
       <button type="button" class="btn ghost" data-wz="additem">＋ 新增一個內容物</button>
       ${cands.length ? `<div style="margin-top:18px"><h4 style="margin:0 0 4px;font-size:14px">沿用現有內容物</h4>
         <p class="muted" style="margin:0 0 8px;font-size:13px">這些內容物目前不會出現在${esc(monthsLabel())}的出貨表上。這款禮盒要用的話請勾選，系統會把這款的月份加進它的出現月份，原本的月份不變。</p>
         ${cands.map(c => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0"><input type="checkbox" data-extend="${c.id}" ${WZ.extend.has(c.id) ? "checked" : ""}>
           <b>${esc(c.code)}</b> ${esc(c.name)}<span class="muted" style="font-size:12px">目前：${esc(monthsText(c.months))}</span></label>`).join("")}</div>` : ""}
-      ${WZ.newItems.length ? newPackForm() : ""}`;
+`;
   } else if (WZ.step === 3) {
     body = `<p class="muted" style="margin-top:0">一盒「${esc(WZ.name)}」會用到哪些包材、各幾個，在出貨那天扣掉。</p>
-      ${linesHtml("box", WZ.boxBom)}${newPackForm()}`;
+      ${linesHtml("box", WZ.boxBom)}
+      ${WZ.newPacks.length ? `<p class="muted" style="font-size:12.5px;margin-top:10px">這次新增的包材：${WZ.newPacks.map(p => esc(p.name)).join("、")}</p>` : ""}`;
   } else {
     const li = (t, v) => `<tr><td style="color:var(--soft);white-space:nowrap;vertical-align:top;padding:6px 12px 6px 0">${t}</td><td style="padding:6px 0">${v}</td></tr>`;
     const lines = arr => arr.length ? arr.map(l => `${esc(packLabel(l.pack))} × ${esc(l.qty)}`).join("、") : `<span class="muted">無</span>`;
     body = `<p style="margin-top:0">確認以下內容，按「確認新增」會一次全部存進去。</p><table style="width:100%;font-size:14px;border-collapse:collapse">
       ${li("禮盒", `<b>${esc(WZ.name)}</b>`)}${li("出現月份", esc(monthsLabel()))}${li("禮盒包材", lines(WZ.boxBom))}
       ${li("新包材", WZ.newPacks.length ? WZ.newPacks.map(p => `${esc(p.name)}（${esc(p.unit || "—")}，安全量 ${p.safety}）`).join("、") : `<span class="muted">無</span>`)}
-      ${li("新內容物", WZ.newItems.length ? WZ.newItems.map(it => `<b>${esc(it.code)}</b> ${esc(it.name)}（${esc(it.unit || "—")}，安全量 ${it.safety}，${it.allMonths || WZ.allMonths ? "所有月份" : esc(monthsLabel())}）<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>`).join("<br>") : `<span class="muted">無</span>`)}
+      ${li("新內容物", WZ.newItems.length ? WZ.newItems.map(it => `<b>${esc(it.code)}</b> ${esc(it.name)}（${esc(it.unit || "—")}，${it.noStock ? "不計算庫存" : "安全量 " + it.safety}，${it.allMonths || WZ.allMonths ? "所有月份" : esc(monthsLabel())}）${it.noStock ? "" : `<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>`}`).join("<br>") : `<span class="muted">無</span>`)}
       ${li("沿用內容物", WZ.extend.size ? [...WZ.extend].map(id => { const x = S.cfg.items.find(i => i.id === id); return x ? `${esc(x.code)} ${esc(x.name)}` : ""; }).join("、") + `<br><span class="muted" style="font-size:12.5px">會加上${esc(monthsLabel())}</span>` : `<span class="muted">無</span>`)}
     </table>`;
   }
@@ -1574,6 +1610,7 @@ function wizSync() {
   b.querySelectorAll("[data-item]").forEach(el => {
     const it = WZ.newItems[Number(el.dataset.item)]; if (!it) return;
     if (el.dataset.f === "allMonths") it.allMonths = el.checked;
+    else if (el.dataset.f === "noStock") it.noStock = el.checked;
     else if (el.dataset.f === "safety") it.safety = el.value.trim() === "" ? 0 : Number(el.value);
     else it[el.dataset.f] = el.value.trim();
   });
@@ -1606,6 +1643,7 @@ function wizValidate() {
       if (!it.code || !it.name) return "每個新內容物都要填代號和全名。";
       if (codes.has(it.code)) return `內容物代號「${it.code}」已經有了，請換一個。`;
       codes.add(it.code);
+      if (it.noStock) continue;
       if (!Number.isInteger(it.safety) || it.safety < 0) return `「${it.name}」的安全庫存量要是 0 以上的整數。`;
       const m = checkLines(it.bom, `「${it.name}」的製作用包材`); if (m) return m;
     }
@@ -1627,7 +1665,7 @@ async function wizClick(e) {
       await call("ship_box_wizard", { p: {
         box: { name: WZ.name, months: WZ.allMonths ? null : WZ.months },
         new_packs: WZ.newPacks.map(p => ({ tmp: p.tmp, name: p.name, unit: p.unit, safety: p.safety })),
-        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.name, unit: it.unit, safety: it.safety, all_months: WZ.allMonths || it.allMonths, bom: cleanLines(it.bom) })),
+        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.name, unit: it.unit, safety: it.noStock ? 0 : it.safety, no_stock: !!it.noStock, all_months: WZ.allMonths || it.allMonths, bom: it.noStock ? [] : cleanLines(it.bom) })),
         extend_items: [...WZ.extend],
         box_bom: cleanLines(WZ.boxBom)
       } });
@@ -1638,7 +1676,7 @@ async function wizClick(e) {
     return;
   }
   if (a === "back") { if (WZ.step > 1) WZ.step--; return wizRender(); }
-  if (a === "additem") WZ.newItems.push({ code: "", name: "", unit: "", safety: 0, allMonths: false, bom: [] });
+  if (a === "additem") WZ.newItems.push({ code: "", name: "", unit: "", safety: 0, allMonths: false, noStock: false, bom: [] });
   if (a === "rmitem") WZ.newItems.splice(Number(t.dataset.i), 1);
   if (a === "addline" || a === "rmline") {
     const key = t.dataset.list; const list = key === "box" ? WZ.boxBom : WZ.newItems[Number(key.slice(5))].bom;
