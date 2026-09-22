@@ -113,6 +113,8 @@ td.csel{box-shadow:inset 0 0 0 999px rgba(47,111,208,.18)}
 .palette button{height:34px;border:1px solid rgba(0,0,0,.12);border-radius:6px;cursor:pointer;font-size:12.5px}
 .palette button:hover{outline:2px solid var(--ink)}
 .palette .clear{grid-column:1/-1;background:#fff;height:30px}
+.swatch-pick input:checked + .sw{outline:2px solid var(--ink);outline-offset:1px;font-weight:700}
+.swatch-pick input:focus-visible + .sw{outline:2px solid var(--amber);outline-offset:1px}
 td.cur{outline:2px solid var(--cur) !important;outline-offset:-2px;z-index:2}
 td[data-peer]{outline:2px solid var(--peer);outline-offset:-2px}
 .peer-tag{position:absolute;z-index:15;background:var(--peer);color:#fff;font-size:11px;line-height:15px;padding:0 5px;border-radius:4px 4px 4px 0;font-weight:500;pointer-events:none;white-space:nowrap}
@@ -653,7 +655,7 @@ function renderSheet() {
         <div class="dh">${Number(d.slice(5, 7))}月${Number(d.slice(8))}日（${WD[dow(d)]}）${sun ? "　只能店取" : ""}</div>`;
       // 白底段
       html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.nm}px">${items.map(() => `<col style="width:${W.it}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
-        <tr><th>寄/取</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}">${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
+        <tr><th>寄/取</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}"${i.header_color ? ` style="background:${colorHex(i.header_color)}"` : ""}>${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
       for (const o of white) {
         const k = `w|${o.id}`;
         const packed = o.status === "packed";
@@ -1328,7 +1330,7 @@ function renderSettings() {
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
     ${items.length ? `<table class="plain"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
-      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
+      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
     <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
     ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th><th></th></tr>
       ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td><td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
@@ -1339,6 +1341,12 @@ function renderSettings() {
     ${tags.length ? `<table class="plain"><tr><th>名稱</th><th></th></tr>
       ${tags.map(x => `<tr class="${x.hidden ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${ops("tag", x, tags)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有吊牌選項。</p>`}
   </div>`;
+}
+// 代號底色：8 種淺色＋不塗色，點一下就選好
+function swatchPicker(name, cur) {
+  const opt = (k, bg, label) => `<label style="cursor:pointer" title="${label}"><input type="radio" name="${name}" value="${k}" ${(cur || "") === k ? "checked" : ""} style="position:absolute;opacity:0">
+    <span class="sw" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:28px;border-radius:6px;background:${bg};border:1px solid rgba(0,0,0,.15);font-size:12px">${label}</span></label>`;
+  return `<div class="swatch-pick" style="display:flex;gap:6px;flex-wrap:wrap">${opt("", "#fff", "無")}${COLORS.map(c => opt(c.k, c.c, c.t)).join("")}</div>`;
 }
 function monthPicker(sel) {
   const now = S.today.slice(0, 7); const y0 = Number(now.slice(0, 4));
@@ -1359,6 +1367,7 @@ async function editSetting(kind, id) {
     ${kind === "item" ? `<div class="row2 field"><div><label class="lbl" for="s-code">代號（出貨表）</label><input type="text" id="s-code" maxlength="10" value="${esc(x ? x.code : "")}" style="width:100%"></div>
       <div><label class="lbl" for="s-name">全名（庫存表）</label><input type="text" id="s-name" maxlength="40" value="${esc(x ? x.name : "")}" style="width:100%"></div></div>`
       : `<div class="field"><label class="lbl" for="s-name">名稱</label><input type="text" id="s-name" maxlength="40" value="${esc(x ? x.name : "")}" style="width:100%"></div>`}
+    ${kind === "item" ? `<div class="field"><span class="lbl">代號底色（出貨表表頭）</span>${swatchPicker("s-hc", x && x.header_color)}</div>` : ""}
     ${kind === "item" ? `<label style="display:flex;align-items:center;gap:6px;margin:-2px 0 12px;font-size:13.5px"><input type="checkbox" id="s-nostock" ${x && x.no_stock ? "checked" : ""}>不計算庫存（不會出現在庫存表，例如不自己做的馬卡龍）</label>` : ""}
     ${kind === "item" || kind === "pack" ? `<div class="row2 field"><div><label class="lbl" for="s-unit">單位</label><input type="text" id="s-unit" maxlength="10" placeholder="條、盤、袋、個" value="${esc(x ? x.unit : "")}" style="width:100%"></div>
       <div id="s-safety-wrap" ${x && x.no_stock ? "hidden" : ""}><label class="lbl" for="s-safety">安全庫存量</label><input type="number" id="s-safety" min="0" step="1" value="${x ? x.safety : 0}" style="width:100%"></div></div>` : ""}
@@ -1375,7 +1384,7 @@ async function editSetting(kind, id) {
     onOk: async ({ root, setErr }) => {
       const data = { name: $("#s-name", root).value.trim() };
       if (!data.name) { setErr("請輸入名稱。"); return false; }
-      if (kind === "item") { data.code = $("#s-code", root).value.trim(); if (!data.code) { setErr("請輸入代號。"); return false; } data.no_stock = $("#s-nostock", root).checked; }
+      if (kind === "item") { data.code = $("#s-code", root).value.trim(); if (!data.code) { setErr("請輸入代號。"); return false; } data.no_stock = $("#s-nostock", root).checked; data.header_color = ($('input[name="s-hc"]:checked', root) || {}).value || null; }
       if (kind === "item" || kind === "pack") {
         data.unit = $("#s-unit", root).value.trim();
         const s = $("#s-safety", root).value.trim(); if (s !== "" && !/^\d+$/.test(s)) { setErr("安全庫存量要是 0 以上的整數。"); return false; }
@@ -1570,6 +1579,7 @@ function wizRender() {
           <div><label class="lbl">單位</label><input type="text" data-item="${i}" data-f="unit" maxlength="10" value="${esc(it.unit)}" style="width:100%"></div>
           <div ${it.noStock ? 'style="visibility:hidden"' : ""}><label class="lbl">安全庫存量</label><input type="number" data-item="${i}" data-f="safety" min="0" step="1" value="${it.safety}" style="width:100%"></div>
           <button type="button" class="btn link danger-text" data-wz="rmitem" data-i="${i}">移除</button></div>
+        <div style="margin-top:10px"><span class="lbl">代號底色（出貨表表頭）</span>${swatchPicker("wz-hc-" + i, it.hc)}</div>
         <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="noStock" ${it.noStock ? "checked" : ""}>不計算庫存（不會出現在庫存表，例如不自己做的馬卡龍）</label>
         ${WZ.allMonths ? "" : `<label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="allMonths" ${it.allMonths ? "checked" : ""}>以後常態禮盒也會用，改成所有月份</label>`}
         ${it.noStock ? "" : `<div style="margin-top:10px"><span class="lbl">製作用包材（做 1 ${esc(it.unit || "個")}用掉幾個，不用就不填）</span>${linesHtml("item:" + i, it.bom)}</div>`}
@@ -1590,7 +1600,7 @@ function wizRender() {
     body = `<p style="margin-top:0">確認以下內容，按「確認新增」會一次全部存進去。</p><table style="width:100%;font-size:14px;border-collapse:collapse">
       ${li("禮盒", `<b>${esc(WZ.name)}</b>`)}${li("出現月份", esc(monthsLabel()))}${li("禮盒包材", lines(WZ.boxBom))}
       ${li("新包材", WZ.newPacks.length ? WZ.newPacks.map(p => `${esc(p.name)}（${esc(p.unit || "—")}，安全量 ${p.safety}）`).join("、") : `<span class="muted">無</span>`)}
-      ${li("新內容物", WZ.newItems.length ? WZ.newItems.map(it => `<b>${esc(it.code)}</b> ${esc(it.name)}（${esc(it.unit || "—")}，${it.noStock ? "不計算庫存" : "安全量 " + it.safety}，${it.allMonths || WZ.allMonths ? "所有月份" : esc(monthsLabel())}）${it.noStock ? "" : `<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>`}`).join("<br>") : `<span class="muted">無</span>`)}
+      ${li("新內容物", WZ.newItems.length ? WZ.newItems.map(it => `<b style="padding:1px 6px;border-radius:4px;${it.hc ? `background:${colorHex(it.hc)}` : ""}">${esc(it.code)}</b> ${esc(it.name)}（${esc(it.unit || "—")}，${it.noStock ? "不計算庫存" : "安全量 " + it.safety}，${it.allMonths || WZ.allMonths ? "所有月份" : esc(monthsLabel())}）${it.noStock ? "" : `<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>`}`).join("<br>") : `<span class="muted">無</span>`)}
       ${li("沿用內容物", WZ.extend.size ? [...WZ.extend].map(id => { const x = S.cfg.items.find(i => i.id === id); return x ? `${esc(x.code)} ${esc(x.name)}` : ""; }).join("、") + `<br><span class="muted" style="font-size:12.5px">會加上${esc(monthsLabel())}</span>` : `<span class="muted">無</span>`)}
     </table>`;
   }
@@ -1614,6 +1624,7 @@ function wizSync() {
     else if (el.dataset.f === "safety") it.safety = el.value.trim() === "" ? 0 : Number(el.value);
     else it[el.dataset.f] = el.value.trim();
   });
+  WZ.newItems.forEach((it, i) => { const r = $(`input[name="wz-hc-${i}"]:checked`, b); if (r) it.hc = r.value || null; });
   b.querySelectorAll("[data-extend]").forEach(el => { const id = Number(el.dataset.extend); el.checked ? WZ.extend.add(id) : WZ.extend.delete(id); });
   b.querySelectorAll(".wl").forEach(row => {
     const list = row.dataset.list === "box" ? WZ.boxBom : WZ.newItems[Number(row.dataset.list.slice(5))].bom;
@@ -1665,7 +1676,7 @@ async function wizClick(e) {
       await call("ship_box_wizard", { p: {
         box: { name: WZ.name, months: WZ.allMonths ? null : WZ.months },
         new_packs: WZ.newPacks.map(p => ({ tmp: p.tmp, name: p.name, unit: p.unit, safety: p.safety })),
-        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.name, unit: it.unit, safety: it.noStock ? 0 : it.safety, no_stock: !!it.noStock, all_months: WZ.allMonths || it.allMonths, bom: it.noStock ? [] : cleanLines(it.bom) })),
+        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.name, unit: it.unit, safety: it.noStock ? 0 : it.safety, no_stock: !!it.noStock, header_color: it.hc || null, all_months: WZ.allMonths || it.allMonths, bom: it.noStock ? [] : cleanLines(it.bom) })),
         extend_items: [...WZ.extend],
         box_bom: cleanLines(WZ.boxBom)
       } });
