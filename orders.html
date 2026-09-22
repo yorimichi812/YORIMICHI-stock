@@ -619,7 +619,7 @@ function renderSheet() {
       for (const o of white) {
         const k = `w|${o.id}`;
         html += `<tr class="r ${o.status === "packed" ? "packed" : ""} ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="w">
-          <td class="kd ${o.status !== "none" ? "y" : ""} ${!o.kind ? "miss" : ""}" data-k="${k}|kind" data-d="${d}">${esc(o.kind || "")}</td>
+          <td class="kd ${o.status !== "none" ? "y" : ""}" data-k="${k}|kind" data-d="${d}">${esc(o.kind || "")}</td>
           <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}">${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
           ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}">${fmt((o.contents || {})[i.id])}</td>`).join("")}
           <td class="tg" data-k="${k}|tag" data-d="${d}">${esc(tagName(o.tag_id))}</td>
@@ -713,7 +713,7 @@ async function setCur(k, opts = {}) {
 async function checkIncomplete() {
   const id = S.touched; S.touched = null;
   const o = orderOf(id); if (!o) return false;
-  if (o.kind) return false;
+  if (true) return false;   // 寄／取和小卡都不用提醒了
   await alertBox(`「${o.name}」還沒選寄／取，請補選。`, "還沒填完");
   const k = `w|${o.id}|kind`;
   S.cur = k; paintCursor(); trackPresence(k);
@@ -1618,7 +1618,7 @@ document.addEventListener("click", e => {
 });
 window.addEventListener("beforeunload", e => {
   const o = S.touched && orderOf(S.touched);
-  if (o && !o.kind) { e.preventDefault(); e.returnValue = ""; }
+  // 不再因為沒選寄／取而提醒
 });
 // 選單和輸入框都放在捲動區裡，會跟著內容一起捲動，不需要在捲動時關掉
 $("#scroll").addEventListener("scroll", () => { if (S.edit) placeEditor(); }, { passive: true });
