@@ -1348,11 +1348,13 @@ function swatchPicker(name, cur) {
     <span class="sw" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:28px;border-radius:6px;background:${bg};border:1px solid rgba(0,0,0,.15);font-size:12px">${label}</span></label>`;
   return `<div class="swatch-pick" style="display:flex;gap:6px;flex-wrap:wrap">${opt("", "#fff", "無")}${COLORS.map(c => opt(c.k, c.c, c.t)).join("")}</div>`;
 }
-function monthPicker(sel) {
+// yearsAhead 有給的話，只顯示今年起算的幾年（引導式新增禮盒用：今年、明年）
+function monthPicker(sel, yearsAhead) {
   const now = S.today.slice(0, 7); const y0 = Number(now.slice(0, 4));
   const set = new Set(sel || []);
+  const years = yearsAhead ? Array.from({ length: yearsAhead }, (_, i) => y0 + i) : [y0 - 1, y0, y0 + 1, y0 + 2];
   let html = "";
-  for (const y of [y0 - 1, y0, y0 + 1, y0 + 2]) {
+  for (const y of years) {
     html += `<label class="yr">${y} 年</label>`;
     for (let m = 1; m <= 12; m++) { const v = `${y}-${pad(m)}`; html += `<label><input type="checkbox" value="${v}" ${set.has(v) ? "checked" : ""}>${m}月</label>`; }
   }
@@ -1481,7 +1483,20 @@ async function settingAction(btn) {
 
 
 /* =================== 新增禮盒精靈 =================== */
+// 步驟：1 代號 → 2 禮盒名稱 → 3 庫存 → 4 製作包材（有計庫存的代號才有）→ 5 出貨包材 → 6 月份 → 7 確認
 let WZ = null;
+const WZ_STEPS = ["出貨表代號", "禮盒名稱", "要不要計庫存", "製作用包材", "出貨用包材", "出現月份", "確認"];
+const wzStockItems = () => WZ.newItems.filter(it => it.stock === true);
+function wzSkip(step) {
+  if (step === 3) return !WZ.newItems.length;
+  if (step === 4) return !wzStockItems().length;
+  return false;
+}
+function wzMove(dir) {
+  let s = WZ.step + dir;
+  while (s > 1 && s < 7 && wzSkip(s)) s += dir;
+  WZ.step = Math.min(7, Math.max(1, s));
+}
 function openWizard() {
   WZ = { step: 1, name: "", allMonths: true, months: [], newItems: [], extend: new Set(), newPacks: [], boxBom: [], np: 0 };
   const o = document.createElement("div"); o.className = "overlay"; o.id = "wz";
@@ -1494,7 +1509,7 @@ function openWizard() {
   openModals.add(close);
   o.addEventListener("click", wizClick);
   o.addEventListener("change", async e => {
-    if (e.target.name === "wz-mm" || e.target.dataset.f === "noStock") { wizSync(); wizRender(); return; }
+    if (e.target.name === "wz-mm" || (e.target.name || "").startsWith("wz-st-")) { wizSync(); wizRender(); return; }
     if (e.target.matches(".wl select") && e.target.value === "__new__") {
       const row = e.target.closest(".wl");
       wizSync();
@@ -1540,79 +1555,81 @@ function newPackPrompt() {
     }
   });
 }
-function newPackForm() {
-  return `<div style="background:#f7f5ee;border-radius:10px;padding:10px 12px;margin-top:12px">
-    <div style="font-size:13px;font-weight:500;margin-bottom:6px">清單裡沒有要的包材？在這裡新增</div>
-    <div style="display:grid;grid-template-columns:1fr 90px 100px auto;gap:8px;align-items:end">
-      <div><label class="lbl">包材名稱</label><input type="text" id="np-name" maxlength="40" style="width:100%"></div>
-      <div><label class="lbl">單位</label><input type="text" id="np-unit" maxlength="10" placeholder="個" style="width:100%"></div>
-      <div><label class="lbl">安全庫存量</label><input type="number" id="np-safety" min="0" step="1" value="0" style="width:100%"></div>
-      <button type="button" class="btn ghost" data-wz="addpack">新增包材</button></div>
-    ${WZ.newPacks.length ? `<div style="font-size:12.5px;margin-top:8px" class="muted">這次新增的包材：${WZ.newPacks.map((p, i) => `${esc(p.name)} <button type="button" class="btn link danger-text" data-wz="rmpack" data-i="${i}" style="font-size:12px">移除</button>`).join("　")}</div>` : ""}
-  </div>`;
-}
-function extendCandidates() {
-  if (WZ.allMonths) return S.cfg.items.filter(i => i.months && !i.hidden_from);
-  return S.cfg.items.filter(i => i.months && !i.hidden_from && WZ.months.some(m => !i.months.includes(m)));
-}
+// 可以沿用的現有代號：只在特定月份出現的（常態代號每個月本來就會出現，不用沿用）
+const extendCandidates = () => S.cfg.items.filter(i => i.months && !i.hidden_from).sort((a, b) => a.code < b.code ? -1 : 1);
 function monthsLabel() { return WZ.allMonths ? "所有月份" : WZ.months.map(m => `${m.slice(0, 4)}年${Number(m.slice(5))}月`).join("、"); }
+const codeChip = it => `<b style="padding:1px 6px;border-radius:4px;${it.hc ? `background:${colorHex(it.hc)}` : ""}">${esc(it.code)}</b>`;
+const wzBox = inner => `<div style="border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:10px">${inner}</div>`;
+const wzHint = t => `<p class="muted" style="margin-top:0">${t}</p>`;
 function wizRender() {
   const b = $("#wz-body"); if (!b) return;
   $("#wz-err").textContent = "";
-  const steps = ["禮盒名稱與月份", "內容物", "禮盒的包材", "確認"];
-  const head = `<h3 style="margin-bottom:4px">新增禮盒</h3><div style="display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap">${steps.map((t, i) =>
-    `<span style="font-size:12.5px;padding:3px 10px;border-radius:999px;${i + 1 === WZ.step ? "background:var(--green);color:#fff" : i + 1 < WZ.step ? "background:var(--green-soft);color:var(--green)" : "background:#f1eee6;color:var(--soft)"}">${i + 1}. ${t}</span>`).join("")}</div>`;
+  const head = `<h3 style="margin-bottom:4px">新增禮盒</h3><div style="display:flex;gap:6px;margin:0 0 16px;flex-wrap:wrap">${WZ_STEPS.map((t, i) => {
+    const n = i + 1, skip = n !== WZ.step && n > 1 && n < 7 && wzSkip(n);
+    const st = n === WZ.step ? "background:var(--green);color:#fff" : skip ? "background:#f1eee6;color:#b9b4a8;text-decoration:line-through" : n < WZ.step ? "background:var(--green-soft);color:var(--green)" : "background:#f1eee6;color:var(--soft)";
+    return `<span style="font-size:12.5px;padding:3px 10px;border-radius:999px;${st}">${n}. ${t}</span>`;
+  }).join("")}</div>`;
   let body = "";
   if (WZ.step === 1) {
-    body = `<div class="field"><label class="lbl" for="wz-name">禮盒名稱</label><input type="text" id="wz-name" maxlength="40" value="${esc(WZ.name)}" style="width:100%" placeholder="例如：中秋限定禮盒"></div>
-      <div class="field"><span class="lbl">這款禮盒出現在哪些月份</span>
-        <div class="radios"><label><input type="radio" name="wz-mm" value="all" ${WZ.allMonths ? "checked" : ""}>所有月份（常態禮盒）</label>
-        <label><input type="radio" name="wz-mm" value="some" ${!WZ.allMonths ? "checked" : ""}>只在選定的月份（檔期限定）</label></div>
-        <div class="mgrid" id="wz-months" ${WZ.allMonths ? "hidden" : ""}>${monthPicker(WZ.months)}</div></div>`;
-  } else if (WZ.step === 2) {
     const cands = extendCandidates();
-    body = `<p class="muted" style="margin-top:0">這款禮盒如果有<b>新的口味或品項</b>，在這裡新增；只用現有內容物的話，直接按下一步。新內容物預設跟禮盒同月份（${esc(monthsLabel())}）。</p>
-      ${WZ.newItems.map((it, i) => `<div style="border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:10px">
-        <div style="display:grid;grid-template-columns:110px 1fr 70px 90px auto;gap:8px;align-items:end">
+    body = wzHint("出貨表上每個代號是一欄。這款禮盒要用到的代號都在這裡設定：一盒就是一個品項的話，建一個代號就好；一盒裡有好幾種內容物，就每種建一個。")
+      + WZ.newItems.map((it, i) => wzBox(`<div style="display:grid;grid-template-columns:140px 1fr auto;gap:12px;align-items:start">
           <div><label class="lbl">代號（出貨表）</label><input type="text" data-item="${i}" data-f="code" maxlength="10" value="${esc(it.code)}" style="width:100%"></div>
-          <div><label class="lbl">全名（庫存表）</label><input type="text" data-item="${i}" data-f="name" maxlength="40" value="${esc(it.name)}" style="width:100%"></div>
-          <div><label class="lbl">單位</label><input type="text" data-item="${i}" data-f="unit" maxlength="10" value="${esc(it.unit)}" style="width:100%"></div>
-          <div ${it.noStock ? 'style="visibility:hidden"' : ""}><label class="lbl">安全庫存量</label><input type="number" data-item="${i}" data-f="safety" min="0" step="1" value="${it.safety}" style="width:100%"></div>
-          <button type="button" class="btn link danger-text" data-wz="rmitem" data-i="${i}">移除</button></div>
-        <div style="margin-top:10px"><span class="lbl">代號底色（出貨表表頭）</span>${swatchPicker("wz-hc-" + i, it.hc)}</div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="noStock" ${it.noStock ? "checked" : ""}>不計算庫存（不會出現在庫存表，例如不自己做的馬卡龍）</label>
-        ${WZ.allMonths ? "" : `<label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:13px"><input type="checkbox" data-item="${i}" data-f="allMonths" ${it.allMonths ? "checked" : ""}>以後常態禮盒也會用，改成所有月份</label>`}
-        ${it.noStock ? "" : `<div style="margin-top:10px"><span class="lbl">製作用包材（做 1 ${esc(it.unit || "個")}用掉幾個，不用就不填）</span>${linesHtml("item:" + i, it.bom)}</div>`}
-      </div>`).join("")}
-      <button type="button" class="btn ghost" data-wz="additem">＋ 新增一個內容物</button>
-      ${cands.length ? `<div style="margin-top:18px"><h4 style="margin:0 0 4px;font-size:14px">沿用現有內容物</h4>
-        <p class="muted" style="margin:0 0 8px;font-size:13px">這些內容物目前不會出現在${esc(monthsLabel())}的出貨表上。這款禮盒要用的話請勾選，系統會把這款的月份加進它的出現月份，原本的月份不變。</p>
+          <div><span class="lbl">代號底色（出貨表表頭）</span>${swatchPicker("wz-hc-" + i, it.hc)}</div>
+          <button type="button" class="btn link danger-text" data-wz="rmitem" data-i="${i}" style="margin-top:22px">移除</button></div>`)).join("")
+      + `<button type="button" class="btn ghost" data-wz="additem">＋ 新增一個代號</button>`
+      + (cands.length ? `<div style="margin-top:20px"><h4 style="margin:0 0 4px;font-size:14px">用到以前建過的代號？</h4>
+        <p class="muted" style="margin:0 0 8px;font-size:13px">直接勾選就好，不用重建。這個代號之後也會出現在這款禮盒的月份。每個月都會出現的常態代號不在這裡，不用勾。</p>
         ${cands.map(c => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0"><input type="checkbox" data-extend="${c.id}" ${WZ.extend.has(c.id) ? "checked" : ""}>
-          <b>${esc(c.code)}</b> ${esc(c.name)}<span class="muted" style="font-size:12px">目前：${esc(monthsText(c.months))}</span></label>`).join("")}</div>` : ""}
-`;
+          <b>${esc(c.code)}</b> ${esc(c.name)}<span class="muted" style="font-size:12px">目前出現：${esc(monthsText(c.months))}</span></label>`).join("")}</div>` : "");
+  } else if (WZ.step === 2) {
+    body = wzHint("這個名稱會出現在出貨表綠底的禮盒統計，每天算這款一共幾盒。")
+      + `<div class="field"><label class="lbl" for="wz-name">禮盒名稱（綠底禮盒統計）</label><input type="text" id="wz-name" maxlength="40" value="${esc(WZ.name)}" style="width:100%" placeholder="例如：中秋限定禮盒"></div>`;
   } else if (WZ.step === 3) {
-    body = `<p class="muted" style="margin-top:0">一盒「${esc(WZ.name)}」會用到哪些包材、各幾個，在出貨那天扣掉。</p>
-      ${linesHtml("box", WZ.boxBom)}
-      ${WZ.newPacks.length ? `<p class="muted" style="font-size:12.5px;margin-top:10px">這次新增的包材：${WZ.newPacks.map(p => esc(p.name)).join("、")}</p>` : ""}`;
+    body = wzHint("會先做起來放著的，選「計庫存」，庫存表會記它還剩多少。接多少單就做多少、做完直接出的，選「不計庫存」，庫存表不會有這一項。")
+      + WZ.newItems.map((it, i) => wzBox(`<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">${codeChip(it)}
+          <div class="radios" style="margin:0"><label><input type="radio" name="wz-st-${i}" value="1" ${it.stock === true ? "checked" : ""}>計庫存</label>
+          <label><input type="radio" name="wz-st-${i}" value="0" ${it.stock === false ? "checked" : ""}>不計庫存</label></div></div>
+        ${it.stock ? `<div style="display:grid;grid-template-columns:1fr 90px 110px;gap:8px;margin-top:10px">
+          <div><label class="lbl">全名（庫存表）</label><input type="text" data-item="${i}" data-f="name" maxlength="40" value="${esc(it.name)}" style="width:100%"></div>
+          <div><label class="lbl">單位</label><input type="text" data-item="${i}" data-f="unit" maxlength="10" placeholder="條、盤、個" value="${esc(it.unit)}" style="width:100%"></div>
+          <div><label class="lbl">安全庫存量</label><input type="number" data-item="${i}" data-f="safety" min="0" step="1" value="${it.safety}" style="width:100%"></div></div>` : ""}`)).join("");
+  } else if (WZ.step === 4) {
+    body = wzHint("做這些代號的時候會用掉哪些包材？這裡填做 1 個單位用掉多少，製作入庫那天扣掉。不用包材的代號就空著。")
+      + WZ.newItems.map((it, i) => it.stock ? wzBox(`<div style="margin-bottom:8px">${codeChip(it)} ${esc(it.name)}<span class="muted" style="font-size:12.5px">　做 1 ${esc(it.unit || "個")}用掉</span></div>${linesHtml("item:" + i, it.bom)}`) : "").join("");
+  } else if (WZ.step === 5) {
+    body = wzHint(`出貨一盒「${esc(WZ.name)}」會用掉哪些包材、各幾個？出貨那天依盒數扣掉。`)
+      + linesHtml("box", WZ.boxBom)
+      + (WZ.newPacks.length ? `<p class="muted" style="font-size:12.5px;margin-top:10px">這次新增的包材：${WZ.newPacks.map(p => esc(p.name)).join("、")}</p>` : "");
+  } else if (WZ.step === 6) {
+    body = wzHint("這款禮盒哪些月份會出現在出貨表？")
+      + `<div class="field"><div class="radios"><label><input type="radio" name="wz-mm" value="all" ${WZ.allMonths ? "checked" : ""}>常態禮盒（每個月都出現）</label>
+        <label><input type="radio" name="wz-mm" value="some" ${!WZ.allMonths ? "checked" : ""}>挑選出貨月份（檔期限定）</label></div>
+        <div class="mgrid" id="wz-months" ${WZ.allMonths ? "hidden" : ""}>${monthPicker(WZ.months, 2)}</div></div>`
+      + (!WZ.allMonths && WZ.newItems.length ? `<div style="margin-top:14px"><p class="muted" style="margin:0 0 6px;font-size:13px">這次新增的代號預設跟禮盒同月份。以後其他禮盒也會用、要每個月都出現的，請勾選：</p>
+        ${WZ.newItems.map((it, i) => `<label style="display:flex;align-items:center;gap:8px;padding:4px 0"><input type="checkbox" data-item="${i}" data-f="allMonths" ${it.allMonths ? "checked" : ""}>${codeChip(it)} 改成每個月都出現</label>`).join("")}</div>` : "");
   } else {
     const li = (t, v) => `<tr><td style="color:var(--soft);white-space:nowrap;vertical-align:top;padding:6px 12px 6px 0">${t}</td><td style="padding:6px 0">${v}</td></tr>`;
-    const lines = arr => arr.length ? arr.map(l => `${esc(packLabel(l.pack))} × ${esc(l.qty)}`).join("、") : `<span class="muted">無</span>`;
+    const none = `<span class="muted">無</span>`;
+    const lines = arr => { const c = cleanLines(arr); return c.length ? c.map(l => `${esc(packLabel(l.pack))} × ${esc(l.qty)}`).join("、") : none; };
     body = `<p style="margin-top:0">確認以下內容，按「確認新增」會一次全部存進去。</p><table style="width:100%;font-size:14px;border-collapse:collapse">
-      ${li("禮盒", `<b>${esc(WZ.name)}</b>`)}${li("出現月份", esc(monthsLabel()))}${li("禮盒包材", lines(WZ.boxBom))}
-      ${li("新包材", WZ.newPacks.length ? WZ.newPacks.map(p => `${esc(p.name)}（${esc(p.unit || "—")}，安全量 ${p.safety}）`).join("、") : `<span class="muted">無</span>`)}
-      ${li("新內容物", WZ.newItems.length ? WZ.newItems.map(it => `<b style="padding:1px 6px;border-radius:4px;${it.hc ? `background:${colorHex(it.hc)}` : ""}">${esc(it.code)}</b> ${esc(it.name)}（${esc(it.unit || "—")}，${it.noStock ? "不計算庫存" : "安全量 " + it.safety}，${it.allMonths || WZ.allMonths ? "所有月份" : esc(monthsLabel())}）${it.noStock ? "" : `<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>`}`).join("<br>") : `<span class="muted">無</span>`)}
-      ${li("沿用內容物", WZ.extend.size ? [...WZ.extend].map(id => { const x = S.cfg.items.find(i => i.id === id); return x ? `${esc(x.code)} ${esc(x.name)}` : ""; }).join("、") + `<br><span class="muted" style="font-size:12.5px">會加上${esc(monthsLabel())}</span>` : `<span class="muted">無</span>`)}
+      ${li("新代號", WZ.newItems.length ? WZ.newItems.map(it => `${codeChip(it)} ${it.stock ? `${esc(it.name)}（計庫存，${esc(it.unit || "—")}，安全量 ${it.safety}）<br><span class="muted" style="font-size:12.5px">製作用包材：${lines(it.bom)}</span>` : "（不計庫存）"}${!WZ.allMonths && it.allMonths ? `<span class="muted" style="font-size:12.5px">　每個月都出現</span>` : ""}`).join("<br>") : none)}
+      ${li("沿用代號", WZ.extend.size ? [...WZ.extend].map(id => { const x = S.cfg.items.find(i => i.id === id); return x ? `${esc(x.code)} ${esc(x.name)}` : ""; }).join("、") + `<br><span class="muted" style="font-size:12.5px">會加上${esc(monthsLabel())}</span>` : none)}
+      ${li("禮盒名稱", `<b>${esc(WZ.name)}</b>`)}
+      ${li("出貨用包材", lines(WZ.boxBom))}
+      ${li("新包材", WZ.newPacks.length ? WZ.newPacks.map(p => `${esc(p.name)}（${esc(p.unit || "—")}，安全量 ${p.safety}）`).join("、") : none)}
+      ${li("出現月份", esc(monthsLabel()))}
     </table>`;
   }
   b.innerHTML = head + body;
   $('[data-wz="back"]').style.visibility = WZ.step === 1 ? "hidden" : "visible";
-  $('[data-wz="next"]').textContent = WZ.step === 4 ? "確認新增" : "下一步";
-  const first = b.querySelector("input[type=text]"); if (first && WZ.step === 1) first.focus();
+  $('[data-wz="next"]').textContent = WZ.step === 7 ? "確認新增" : "下一步";
+  const first = b.querySelector("input[type=text]"); if (first && (WZ.step === 1 || WZ.step === 2)) first.focus();
 }
 function wizSync() {
   const b = $("#wz-body"); if (!b) return;
-  if (WZ.step === 1) {
-    WZ.name = $("#wz-name", b).value.trim();
+  if (WZ.step === 2) WZ.name = $("#wz-name", b).value.trim();
+  if (WZ.step === 6) {
     const r = $('input[name="wz-mm"]:checked', b); WZ.allMonths = !r || r.value === "all";
     const boxes = b.querySelectorAll("#wz-months input[type=checkbox]");
     if (boxes.length) WZ.months = [...boxes].filter(i => i.checked).map(i => i.value).sort();
@@ -1620,11 +1637,13 @@ function wizSync() {
   b.querySelectorAll("[data-item]").forEach(el => {
     const it = WZ.newItems[Number(el.dataset.item)]; if (!it) return;
     if (el.dataset.f === "allMonths") it.allMonths = el.checked;
-    else if (el.dataset.f === "noStock") it.noStock = el.checked;
     else if (el.dataset.f === "safety") it.safety = el.value.trim() === "" ? 0 : Number(el.value);
     else it[el.dataset.f] = el.value.trim();
   });
-  WZ.newItems.forEach((it, i) => { const r = $(`input[name="wz-hc-${i}"]:checked`, b); if (r) it.hc = r.value || null; });
+  WZ.newItems.forEach((it, i) => {
+    const hc = $(`input[name="wz-hc-${i}"]:checked`, b); if (hc) it.hc = hc.value || null;
+    const st = $(`input[name="wz-st-${i}"]:checked`, b); if (st) it.stock = st.value === "1";
+  });
   b.querySelectorAll("[data-extend]").forEach(el => { const id = Number(el.dataset.extend); el.checked ? WZ.extend.add(id) : WZ.extend.delete(id); });
   b.querySelectorAll(".wl").forEach(row => {
     const list = row.dataset.list === "box" ? WZ.boxBom : WZ.newItems[Number(row.dataset.list.slice(5))].bom;
@@ -1643,23 +1662,29 @@ function checkLines(lines, where) {
 const cleanLines = lines => lines.filter(l => l.pack && Number(l.qty) > 0).map(l => ({ pack: /^\d+$/.test(l.pack) ? Number(l.pack) : l.pack, qty: Number(l.qty) }));
 function wizValidate() {
   if (WZ.step === 1) {
-    if (!WZ.name) return "請輸入禮盒名稱。";
-    if (S.cfg.boxes.some(b => b.name === WZ.name)) return `禮盒「${WZ.name}」已經有了。`;
-    if (!WZ.allMonths && !WZ.months.length) return "請至少勾選一個月份，或選「所有月份」。";
-    for (const id of [...WZ.extend]) if (!extendCandidates().some(c => c.id === id)) WZ.extend.delete(id);
-  }
-  if (WZ.step === 2) {
+    if (!WZ.newItems.length && !WZ.extend.size) return "請新增至少一個代號，或勾選一個以前建過的代號。";
     const codes = new Set(S.cfg.items.map(i => i.code));
     for (const it of WZ.newItems) {
-      if (!it.code || !it.name) return "每個新內容物都要填代號和全名。";
-      if (codes.has(it.code)) return `內容物代號「${it.code}」已經有了，請換一個。`;
+      if (!it.code) return "每個新代號都要填代號，不用的請按「移除」。";
+      if (codes.has(it.code)) return `代號「${it.code}」已經有了，請換一個；如果就是那個代號，請在下面勾選沿用。`;
       codes.add(it.code);
-      if (it.noStock) continue;
-      if (!Number.isInteger(it.safety) || it.safety < 0) return `「${it.name}」的安全庫存量要是 0 以上的整數。`;
-      const m = checkLines(it.bom, `「${it.name}」的製作用包材`); if (m) return m;
     }
   }
-  if (WZ.step === 3) { const m = checkLines(WZ.boxBom, "禮盒的包材清單"); if (m) return m; }
+  if (WZ.step === 2) {
+    if (!WZ.name) return "請輸入禮盒名稱。";
+    if (S.cfg.boxes.some(b => b.name === WZ.name)) return `禮盒「${WZ.name}」已經有了。`;
+  }
+  if (WZ.step === 3) {
+    for (const it of WZ.newItems) {
+      if (it.stock === null) return `請選代號「${it.code}」要計庫存還是不計庫存。`;
+      if (!it.stock) continue;
+      if (!it.name) return `請填代號「${it.code}」的全名（庫存表）。`;
+      if (!Number.isInteger(it.safety) || it.safety < 0) return `代號「${it.code}」的安全庫存量要是 0 以上的整數。`;
+    }
+  }
+  if (WZ.step === 4) for (const it of wzStockItems()) { const m = checkLines(it.bom, `「${it.code}」的製作用包材`); if (m) return m; }
+  if (WZ.step === 5) { const m = checkLines(WZ.boxBom, "出貨用包材"); if (m) return m; }
+  if (WZ.step === 6 && !WZ.allMonths && !WZ.months.length) return "請至少勾選一個月份，或選「常態禮盒」。";
   return "";
 }
 async function wizClick(e) {
@@ -1670,13 +1695,18 @@ async function wizClick(e) {
   const err = $("#wz-err");
   if (a === "next") {
     const m = wizValidate(); if (m) { err.textContent = m; return; }
-    if (WZ.step < 4) { WZ.step++; return wizRender(); }
+    if (WZ.step === 2) {
+      // 只建一個代號時，全名（庫存表）先帶入禮盒名稱，要改可以改
+      if (WZ.newItems.length === 1 && !WZ.newItems[0].name) WZ.newItems[0].name = WZ.name;
+    }
+    if (WZ.step < 7) { wzMove(1); return wizRender(); }
     t.disabled = true;
     try {
       await call("ship_box_wizard", { p: {
         box: { name: WZ.name, months: WZ.allMonths ? null : WZ.months },
         new_packs: WZ.newPacks.map(p => ({ tmp: p.tmp, name: p.name, unit: p.unit, safety: p.safety })),
-        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.name, unit: it.unit, safety: it.noStock ? 0 : it.safety, no_stock: !!it.noStock, header_color: it.hc || null, all_months: WZ.allMonths || it.allMonths, bom: it.noStock ? [] : cleanLines(it.bom) })),
+        // 不計庫存的代號不會出現在庫存表，全名直接用綠底禮盒名稱
+        new_items: WZ.newItems.map(it => ({ code: it.code, name: it.stock ? it.name : WZ.name, unit: it.stock ? it.unit : "", safety: it.stock ? it.safety : 0, no_stock: !it.stock, header_color: it.hc || null, all_months: WZ.allMonths || it.allMonths, bom: it.stock ? cleanLines(it.bom) : [] })),
         extend_items: [...WZ.extend],
         box_bom: cleanLines(WZ.boxBom)
       } });
@@ -1686,24 +1716,12 @@ async function wizClick(e) {
     } catch (x) { if (!(x instanceof Handled)) err.textContent = x.message; t.disabled = false; }
     return;
   }
-  if (a === "back") { if (WZ.step > 1) WZ.step--; return wizRender(); }
-  if (a === "additem") WZ.newItems.push({ code: "", name: "", unit: "", safety: 0, allMonths: false, noStock: false, bom: [] });
+  if (a === "back") { wzMove(-1); return wizRender(); }
+  if (a === "additem") WZ.newItems.push({ code: "", hc: null, stock: null, name: "", unit: "", safety: 0, allMonths: false, bom: [] });
   if (a === "rmitem") WZ.newItems.splice(Number(t.dataset.i), 1);
   if (a === "addline" || a === "rmline") {
     const key = t.dataset.list; const list = key === "box" ? WZ.boxBom : WZ.newItems[Number(key.slice(5))].bom;
     if (a === "addline") list.push({ pack: "", qty: "" }); else list.splice(Number(t.dataset.i), 1);
-  }
-  if (a === "addpack") {
-    const name = $("#np-name").value.trim(), unit = $("#np-unit").value.trim(), sf = $("#np-safety").value.trim();
-    if (!name) { err.textContent = "請輸入包材名稱。"; return; }
-    if (S.cfg.packs.some(p => p.name === name) || WZ.newPacks.some(p => p.name === name)) { err.textContent = `包材「${name}」已經有了，請直接從清單選。`; return; }
-    if (sf !== "" && !/^\d+$/.test(sf)) { err.textContent = "安全庫存量要是 0 以上的整數。"; return; }
-    WZ.newPacks.push({ tmp: "np" + (++WZ.np), name, unit, safety: sf === "" ? 0 : Number(sf) });
-  }
-  if (a === "rmpack") {
-    const p = WZ.newPacks.splice(Number(t.dataset.i), 1)[0];
-    const drop = list => list.forEach(l => { if (l.pack === p.tmp) l.pack = ""; });
-    drop(WZ.boxBom); WZ.newItems.forEach(it => drop(it.bom));
   }
   wizRender();
 }
