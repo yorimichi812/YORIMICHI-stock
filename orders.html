@@ -81,7 +81,7 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 
 .body{grid-column:2;min-height:0;position:relative}
 .scroll{position:absolute;inset:0;overflow:auto}
-.page{padding:20px 24px 60px;max-width:1100px}
+.page{padding:20px 24px 60px}
 .page h2{font-size:18px;margin:0 0 10px}
 .page h3{font-size:15px;margin:24px 0 8px}
 
@@ -166,6 +166,13 @@ table.plain th{background:#fbfaf6;font-weight:500;color:var(--soft);font-size:12
 table.plain td.num{text-align:right;font-variant-numeric:tabular-nums}
 table.plain tr.sum td{font-weight:700;border-top:2px solid var(--rule)}
 table.plain tr.off td{color:var(--faint)}
+/* 設定頁的內容物表：往下捲時標題列固定在上方，欄位不換行 */
+table.plain.items{overflow:visible}
+table.plain.items th{position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #efece3}
+table.plain.items th:first-child{border-top-left-radius:10px}
+table.plain.items th:last-child{border-top-right-radius:10px}
+table.plain.items th,table.plain.items td{white-space:nowrap}
+table.plain.items .ops{flex-wrap:nowrap}
 .tag-off{font-size:11px;background:#eee;color:#777;padding:1px 7px;border-radius:999px;margin-left:6px}
 .ops{display:flex;gap:2px;flex-wrap:wrap}
 .ops button{border:0;background:none;color:var(--green);cursor:pointer;padding:3px 7px;border-radius:5px;font-size:12.5px}
@@ -1301,7 +1308,21 @@ async function saveStock(p, ed, raw) {
 }
 
 /* =================== 設定 =================== */
-function monthsText(m) { return !m ? "所有月份" : m.map(x => `${x.slice(0, 4)}年${Number(x.slice(5))}月`).join("、"); }
+// 月份短寫法：連續的月份合併成一段。同一年「2026年10–12月」，跨年「2026年10月–2027年2月」，不連續用「、」隔開
+function monthsText(m) {
+  if (!m) return "所有月份";
+  if (!m.length) return "";
+  const n = x => Number(x.slice(0, 4)) * 12 + Number(x.slice(5)) - 1;
+  const ym = v => [Math.floor(v / 12), v % 12 + 1];
+  const vals = [...new Set(m.map(n))].sort((a, b) => a - b);
+  const runs = [];
+  for (const v of vals) { const r = runs[runs.length - 1]; if (r && v === r[1] + 1) r[1] = v; else runs.push([v, v]); }
+  return runs.map(([a, b]) => {
+    const [ya, ma] = ym(a), [yb, mb] = ym(b);
+    if (a === b) return `${ya}年${ma}月`;
+    return ya === yb ? `${ya}年${ma}–${mb}月` : `${ya}年${ma}月–${yb}年${mb}月`;
+  }).join("、");
+}
 function hiddenBadge(x) { return x.hidden_from ? `<span class="tag-off">${Number(x.hidden_from.slice(5))}月起下架</span>` : x.hidden ? `<span class="tag-off">已下架</span>` : ""; }
 function bomVersions(kind, id) {
   return kind === "item"
@@ -1329,7 +1350,7 @@ function renderSettings() {
   return `<div class="page">
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
-    ${items.length ? `<table class="plain"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
+    ${items.length ? `<table class="plain items"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
       ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
     <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
     ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th><th></th></tr>
@@ -1557,7 +1578,7 @@ function newPackPrompt() {
 }
 // 可以沿用的現有代號：只在特定月份出現的（常態代號每個月本來就會出現，不用沿用）
 const extendCandidates = () => S.cfg.items.filter(i => i.months && !i.hidden_from).sort((a, b) => a.code < b.code ? -1 : 1);
-function monthsLabel() { return WZ.allMonths ? "所有月份" : WZ.months.map(m => `${m.slice(0, 4)}年${Number(m.slice(5))}月`).join("、"); }
+function monthsLabel() { return monthsText(WZ.allMonths ? null : WZ.months); }
 const codeChip = it => `<b style="padding:1px 6px;border-radius:4px;${it.hc ? `background:${colorHex(it.hc)}` : ""}">${esc(it.code)}</b>`;
 const wzBox = inner => `<div style="border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:10px">${inner}</div>`;
 const wzHint = t => `<p class="muted" style="margin-top:0">${t}</p>`;
