@@ -1437,7 +1437,7 @@ function pgEditorEl() {
       if (PG.edit || !S.cur) return;
       const p = pgParse(S.cur);
       if (!canEdit() || !pgTextCell(p.f)) { e.value = ""; return; }
-      PG.edit = { key: S.cur, old: p.id === "new" ? null : pgValue(pgRow(p.id), p.f) };
+      PG.edit = { key: S.cur, old: p.id === "new" ? null : pgValue(pgRow(p.id), p.f), typed: true };
       e.classList.remove("armed"); trackPresence(S.cur);
     };
     e.addEventListener("input", begin);
@@ -1487,7 +1487,9 @@ function pgEdKey(e) {
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !pgTextCell(p.f)) { e.preventDefault(); if (p.f.endsWith(".m")) pgOpenMenu(S.cur); }
     return;
   }
-  if (e.key === "Enter") { e.preventDefault(); pgCommit("down"); }
+  // 選好格子直接打字時，方向鍵存檔並跳格；雙擊或按 Enter 進入修改時，方向鍵在文字裡移動游標
+  if (map[e.key] && PG.edit.typed) { e.preventDefault(); pgCommit(map[e.key]); }
+  else if (e.key === "Enter") { e.preventDefault(); pgCommit("down"); }
   else if (e.key === "Tab") { e.preventDefault(); pgCommit(e.shiftKey ? "left" : "right"); }
   else if (e.key === "Escape") { e.preventDefault(); PG.edit = null; pgAfterEdit(); }
 }
@@ -1764,7 +1766,7 @@ function tsEditorEl() {
       if (TS.edit || !S.cur) return;
       const p = pgParse(S.cur);
       if (!canEdit() || !tsText(p.f)) { e.value = ""; return; }
-      TS.edit = { key: S.cur, old: p.id === "new" ? null : tsValue(tsRow(p.id), p.f) };
+      TS.edit = { key: S.cur, old: p.id === "new" ? null : tsValue(tsRow(p.id), p.f), typed: true };
       e.classList.remove("armed"); trackPresence(S.cur);
     };
     e.addEventListener("input", begin);
@@ -1820,7 +1822,9 @@ function tsEdKey(e) {
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !tsText(p.f)) { e.preventDefault(); tsActivate(S.cur); }
     return;
   }
-  if (e.key === "Enter") { e.preventDefault(); tsCommit("down"); }
+  // 選好格子直接打字時，方向鍵存檔並跳格；雙擊或按 Enter 進入修改時，方向鍵在文字裡移動游標
+  if (map[e.key] && TS.edit.typed) { e.preventDefault(); tsCommit(map[e.key]); }
+  else if (e.key === "Enter") { e.preventDefault(); tsCommit("down"); }
   else if (e.key === "Tab") { e.preventDefault(); tsCommit(e.shiftKey ? "left" : "right"); }
   else if (e.key === "Escape") { e.preventDefault(); TS.edit = null; tsAfterEdit(); }
 }
