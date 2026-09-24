@@ -1003,6 +1003,7 @@ async function saveName(p, ed, raw) {
     if (!raw) return true;
     try {
       const id = await call("ship_order_create", { p_date: p.date, p_name: raw });
+      pushUndo(`出貨表 ${md(p.date)} 新增「${raw}」`, async () => { await call("ship_order_delete", { p_id: uid("o", id) }); });
       notify(); await refresh();
       S.touched = id;
       S.cur = `w|${id}|kind`; paintCursor(); trackPresence(S.cur);
@@ -1011,9 +1012,14 @@ async function saveName(p, ed, raw) {
   }
   if (raw === "") {
     const o = orderOf(p.o); if (!o) return true;
-    const ok = await confirmBox("刪除訂單", `名字清空會刪除「${o.name}」這筆訂單（${md(o.ship_date)}），確定刪除嗎？`, "刪除訂單", true);
+    const ok = await confirmBox("刪除訂單", `名字清空會刪除「${o.name}」這筆訂單（${md(o.ship_date)}），確定刪除嗎？（刪錯了可以按 Ctrl+Z 復原）`, "刪除訂單", true);
     if (!ok) { render(); return false; }
-    try { await call("ship_order_delete", { p_id: o.id }); if (S.touched === o.id) S.touched = null; S.sel.delete(o.id); notify(); await refresh(); }
+    const snap = JSON.parse(JSON.stringify(o));
+    try {
+      await call("ship_order_delete", { p_id: o.id }); if (S.touched === o.id) S.touched = null; S.sel.delete(o.id);
+      pushUndo(`出貨表 ${md(snap.ship_date)} 刪除「${snap.name}」`, async () => { UNDO_MAP["o:" + uid("o", snap.id)] = await call("ship_order_restore", { p: snap }); });
+      notify(); await refresh();
+    }
     catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
     return true;
   }
@@ -1023,9 +1029,11 @@ async function saveName(p, ed, raw) {
 async function saveField(id, f, oldV, newV, date) {
   if (f === "kind" && newV === "寄" && dow(date) === 0) { await alertBox("星期日不能寄出，只能店取。", "不能寄出"); return false; }
   const o = orderOf(id); if (!o) return false;
+  const prevStatus = o.status, prevName = o.name;
   applyLocal(o, f, newV); render();
   try {
     const fn = f === "loc" ? "ship_order_loc" : "ship_order_set";
+    let applied = true;
     let r = await call(fn, { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
     if (r && r.conflict) {
       const show = v => f === "loc" ? (LOCN[v] || "空白") : f === "card" ? (v === true ? "○" : v === false ? "✕" : v ? v : "空白") : f === "tag" ? (tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
@@ -1034,7 +1042,14 @@ async function saveField(id, f, oldV, newV, date) {
         body: `<p>「${esc(o.name)}」的這一格剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(show(r.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
       });
       if (force) r = await call(fn, { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
+      else applied = false;
     }
+    if (applied) pushUndo(`出貨表 ${md(date)} ${prevName} ${sheetFieldLabel(f)} ${undoShow(f, newV)} → ${undoShow(f, oldV)}`, async () => {
+      const id2 = uid("o", id);
+      const u = await call(fn, { p_id: id2, p_field: f, p_old: newV, p_new: oldV, p_force: false });
+      if (u && u.conflict) return { skip: true, by: u.by };
+      if (f === "loc" && !newV && prevStatus === "packed") await call("ship_order_status", { p_ids: [id2], p_status: "packed" });
+    });
     S.touched = id;
     notify(); await refresh();
     return true;
@@ -1162,9 +1177,20 @@ async function applyColor(color) {
       keep = keep === "yellow" ? { ids: yellowIds, v: false } : { ids: yellowIds, v: true };
     }
   }
+  const before = cells.map(p => ({ id: p.o, cell: `${p.s}|${p.f}`, old: (orderOf(p.o).colors || {})[`${p.s}|${p.f}`] || null }));
+  const keepBefore = keep ? keep.ids.map(id => ({ id, v: orderOf(id).color_keep ?? null })) : [];
+  const ym = S.month;
   try {
     await call("ship_color_set", { p_cells: cells.map(p => ({ id: p.o, cell: `${p.s}|${p.f}` })), p_color: color });
     if (keep) await call("ship_color_keep", { p_ids: keep.ids, p_keep: keep.v });
+    pushUndo(`出貨表 ${color ? "塗色" : "清除顏色"}（${before.length} 格）`, async () => {
+      const now = await freshOrders(ym);
+      for (const b of before) { const o = now.find(x => x.id === uid("o", b.id)); if (o && ((o.colors || {})[b.cell] || null) !== (color || null)) return { skip: true, by: o.updated_by }; }
+      for (const c of [...new Set(before.map(b => b.old))]) {
+        await call("ship_color_set", { p_cells: before.filter(b => b.old === c).map(b => ({ id: uid("o", b.id), cell: b.cell })), p_color: c });
+      }
+      for (const v of [...new Set(keepBefore.map(k => k.v))]) await call("ship_color_keep", { p_ids: keepBefore.filter(k => k.v === v).map(k => uid("o", k.id)), p_keep: v });
+    });
     S.ordersJson = ""; notify(); await refresh();
   } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
 }
@@ -1172,6 +1198,7 @@ async function applyColor(color) {
 /* ---------- 狀態、改日期、拖曳 ---------- */
 async function setStatus(st) {
   const ids = [...S.sel]; if (!ids.length) return;
+  let keepBefore = [];
   if (st !== "none") {
     const hit = ids.filter(id => {
       const o = orderOf(id); if (!o) return false;
@@ -1182,11 +1209,25 @@ async function setStatus(st) {
         body: `<p>${esc(hit.map(id => orderOf(id).name).join("、"))} 有自己塗過顏色的格子，標成${st === "packed" ? "已包裝" : "已派單"}後會被黃色蓋過。</p><p>這些格子要保留自己的顏色，還是變成黃色？</p>`,
         extra: [{ label: "變成黃色", value: "yellow" }] });
       if (!r) return;
+      keepBefore = hit.map(id => ({ id, v: orderOf(id).color_keep ?? null }));
       try { await call("ship_color_keep", { p_ids: hit, p_keep: r !== "yellow" }); }
       catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); return; }
     }
   }
-  try { await call("ship_order_status", { p_ids: ids, p_status: st }); notify(); await refresh(); toast(st === "none" ? "已取消標示（退回已派單）" : "已標示已包裝"); }
+  // 會真的改變狀態的訂單：已包裝＝原本已派單的；取消標示＝原本已包裝的
+  const changed = ids.filter(id => { const o = orderOf(id); return o && (st === "packed" ? o.status === "dispatched" && o.loc : o.status === "packed"); });
+  const ym = S.month, target = st === "packed" ? "packed" : "dispatched";
+  try {
+    await call("ship_order_status", { p_ids: ids, p_status: st });
+    if (changed.length || keepBefore.length) pushUndo(`出貨表 ${st === "packed" ? "已包裝" : "取消標示"}（${changed.length} 筆）`, async () => {
+      const now = await freshOrders(ym);
+      for (const id of changed) { const o = now.find(x => x.id === uid("o", id)); if (o && o.status !== target) return { skip: true, by: o.updated_by }; }
+      if (changed.length) await call("ship_order_status", { p_ids: changed.map(id => uid("o", id)), p_status: st === "packed" ? "none" : "packed" });
+      for (const v of [...new Set(keepBefore.map(k => k.v))]) await call("ship_color_keep", { p_ids: keepBefore.filter(k => k.v === v).map(k => uid("o", k.id)), p_keep: v });
+    });
+    notify(); await refresh();
+    toast(!changed.length ? (st === "none" ? "選到的訂單都不是已包裝，沒有變動" : "選到的訂單都已經是已包裝") : st === "none" ? `已取消標示 ${changed.length} 筆（退回已派單）` : `已標示已包裝 ${changed.length} 筆`);
+  }
   catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
 }
 async function moveDate() {
@@ -1203,8 +1244,14 @@ async function moveDate() {
         const bad = list.filter(o => o.kind === "寄");
         if (bad.length) { await alertBox(`星期日不能寄出，只能店取。這幾筆是寄出：${bad.map(o => o.name).join("、")}`, "不能寄出"); return false; }
       }
+      const olds = list.map(o => ({ id: o.id, d: o.ship_date }));
       try { await call("ship_order_move", { p_ids: ids, p_date: d }); }
       catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); return false; }
+      pushUndo(`出貨表 改日期到 ${md(d)}（${olds.length} 筆）`, async () => {
+        const now = await freshOrders(d.slice(0, 7));
+        for (const x of olds) { const o = now.find(y => y.id === uid("o", x.id)); if (!o) return { skip: true, by: "別人" }; }
+        for (const od of [...new Set(olds.map(x => x.d))]) await call("ship_order_move", { p_ids: olds.filter(x => x.d === od).map(x => uid("o", x.id)), p_date: od });
+      });
       notify(); await refresh();
       toast(`已改到 ${md(d)}${d.slice(0, 7) !== S.month ? "（在 " + Number(d.slice(5, 7)) + " 月）" : ""}`);
     }
@@ -1230,12 +1277,26 @@ document.addEventListener("drop", async e => {
   if (!tr) return; e.preventDefault();
   const before = tr.classList.contains("dropb") || e.clientY < tr.getBoundingClientRect().top + tr.getBoundingClientRect().height / 2;
   const target = Number(tr.dataset.o); if (target === info.id) return;
-  const ids = rowsInSection(info.d, info.s).map(Number).filter(x => !isNaN(x) && x !== info.id);
+  const oldIds = rowsInSection(info.d, info.s).map(Number).filter(x => !isNaN(x));
+  const ids = oldIds.filter(x => x !== info.id);
   let at = ids.indexOf(target); if (!before) at++;
   ids.splice(at, 0, info.id);
   ids.forEach((id, i) => { const o = orderOf(id); if (o) o[info.s === "w" ? "sort_white" : "sort_green"] = i + 1; });
   S.ordersJson = ""; render();
-  try { await call("ship_order_reorder", { p_date: info.d, p_section: info.s === "w" ? "white" : "green", p_ids: ids }); notify(); }
+  try {
+    await call("ship_order_reorder", { p_date: info.d, p_section: info.s === "w" ? "white" : "green", p_ids: ids });
+    const mv = orderOf(info.id);
+    pushUndo(`出貨表 ${md(info.d)} 移動「${mv ? mv.name : ""}」的順序`, async () => {
+      // 同一天這一區的順序如果已經跟我拖完的不一樣，代表別人動過，就不退回
+      const key = info.s === "w" ? "sort_white" : "sort_green";
+      const now = (await freshOrders(info.d.slice(0, 7))).filter(o => o.ship_date === info.d)
+        .sort((a, b) => a[key] - b[key] || a.id - b.id).map(o => o.id);
+      const mine = ids.map(x => uid("o", x)).filter(x => now.includes(x));
+      if (now.filter(x => mine.includes(x)).join(",") !== mine.join(",")) return { skip: true, by: "別人" };
+      await call("ship_order_reorder", { p_date: info.d, p_section: info.s === "w" ? "white" : "green", p_ids: oldIds.map(x => uid("o", x)) });
+    });
+    notify();
+  }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); await refresh(); }
 });
 document.addEventListener("dragend", () => { dragInfo = null; document.querySelectorAll(".dropb,.dropa").forEach(x => x.classList.remove("dropb", "dropa")); });
@@ -1547,6 +1608,7 @@ async function pgCommit(move) {
   if (p.id === "new") {
     try {
       const id = await call("ship_progress_create", { p_name: nv });
+      pushUndo(`進程表 新增「${nv}」`, async () => { await call("ship_progress_delete", { p_ids: [uid("p", id)] }); });
       notify(); await refresh();
       S.cells = new Set([pgKey(id, "wish")]); PG.anchor = pgKey(id, "wish"); pgPaintSel(); pgSetCur(pgKey(id, "wish"));
     } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); pgAfterEdit(); }
@@ -1558,6 +1620,8 @@ async function pgCommit(move) {
 }
 async function pgSave(id, f, oldV, newV) {
   const r = pgRow(id); if (!r) return;
+  const nm = r.name, stage = f.endsWith(".d") ? f.slice(0, -2) : null;
+  const prevMark = stage ? ((r.cells || {})[stage + ".m"] ?? null) : null;
   // 先改畫面，再存
   if (f === "name") r.name = newV; else if (f === "wish") r.wish = newV;
   else { r.cells = { ...(r.cells || {}) }; if (newV === null) delete r.cells[f]; else r.cells[f] = newV; }
@@ -1571,8 +1635,18 @@ async function pgSave(id, f, oldV, newV) {
         body: `<p>「${esc(r.name)}」的這一格剛被 <b>${esc(res.by || "別人")}</b> 改成 <b>${esc(show(res.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
       });
       if (force) res = await call("ship_progress_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
+      else { notify(); await refresh(); return; }
     }
     notify(); await refresh();
+    // 打日期時系統自動帶的符號，退回時一起拿掉
+    const r2 = pgRow(id), auto = stage && prevMark === null && r2 ? ((r2.cells || {})[stage + ".m"] ?? null) : null;
+    const lbl = f === "name" ? "姓名" : f === "wish" ? "希望到貨日" : f === "note" ? "備註" : pgStage(f.slice(0, -2)).t + (f.endsWith(".d") ? "日期" : "");
+    pushUndo(`進程表 ${nm} ${lbl} ${show(newV)} → ${show(oldV)}`, async () => {
+      const id2 = uid("p", id);
+      const u = await call("ship_progress_set", { p_id: id2, p_field: f, p_old: newV, p_new: oldV, p_force: false });
+      if (u && u.conflict) return { skip: true, by: u.by };
+      if (auto) await call("ship_progress_set", { p_id: id2, p_field: stage + ".m", p_old: auto, p_new: null, p_force: false });
+    });
   } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); PG.json = ""; await refresh(); }
 }
 async function pgClear(k) {
@@ -1643,7 +1717,9 @@ document.addEventListener("dblclick", e => {
 /* ---------- 工具列動作 ---------- */
 async function pgArchive(v) {
   const ids = pgSelIds(); if (!ids.length) return;
-  try { await call("ship_progress_archive", { p_ids: ids, p_archived: v }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
+  const changed = ids.filter(id => { const r = pgRow(id); return r && !!r.archived !== v; });
+  try { await call("ship_progress_archive", { p_ids: ids, p_archived: v });
+    if (changed.length) pushUndo(`進程表 ${v ? "封存" : "取消封存"}（${changed.length} 位）`, async () => { await call("ship_progress_archive", { p_ids: changed.map(id => uid("p", id)), p_archived: !v }); }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
 // 在客人名字格按 Delete：刪除選到的名字格那幾位客人（沒有多選時就是游標那一位）
@@ -1654,14 +1730,22 @@ function pgDeleteNames() {
 async function pgDelete(ids) {
   if (!ids || !ids.length) return;
   const names = ids.map(id => (pgRow(id) || {}).name).filter(Boolean).join("、");
-  if (!await confirmBox("刪除客人", `確定要刪除 ${names}？刪除後這些客人的資料就不見了，無法復原。`, "刪除", true)) return;
-  try { await call("ship_progress_delete", { p_ids: ids }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
+  if (!await confirmBox("刪除客人", `確定要刪除 ${names}？（刪錯了可以按 Ctrl+Z 復原）`, "刪除", true)) return;
+  const snaps = ids.map(id => JSON.parse(JSON.stringify(pgRow(id)))).filter(Boolean);
+  try { await call("ship_progress_delete", { p_ids: ids });
+    pushUndo(`進程表 刪除「${names}」`, async () => { for (const s of snaps) UNDO_MAP["p:" + uid("p", s.id)] = await call("ship_progress_restore", { p: s }); }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
 async function pgApplyColor(color) {
   const cells = [...S.cells].map(pgParse).filter(p => p.id !== "new" && pgRow(p.id));
   if (!cells.length) return;
-  try { await call("ship_progress_color", { p_cells: cells.map(p => ({ id: p.id, cell: p.f })), p_color: color }); PG.json = ""; notify(); await refresh(); }
+  const before = cells.map(p => ({ id: p.id, cell: p.f, old: (pgRow(p.id).colors || {})[p.f] || null }));
+  try { await call("ship_progress_color", { p_cells: cells.map(p => ({ id: p.id, cell: p.f })), p_color: color });
+    pushUndo(`進程表 ${color ? "塗色" : "清除顏色"}（${before.length} 格）`, async () => {
+      const now = await call("ship_progress_list");
+      for (const b of before) { const r = now.find(x => x.id === uid("p", b.id)); if (r && ((r.colors || {})[b.cell] || null) !== (color || null)) return { skip: true, by: "別人" }; }
+      for (const c of [...new Set(before.map(b => b.old))]) await call("ship_progress_color", { p_cells: before.filter(b => b.old === c).map(b => ({ id: uid("p", b.id), cell: b.cell })), p_color: c });
+    }); PG.json = ""; notify(); await refresh(); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
 function pgArea() {
@@ -1881,6 +1965,7 @@ async function tsCommit(move) {
   if (p.id === "new") {
     try {
       const id = await call("ship_tasting_create", { p_name: nv });
+      pushUndo(`試吃追蹤表 新增「${nv}」`, async () => { await call("ship_tasting_delete", { p_ids: [uid("t", id)] }); });
       notify(); await refresh();
       const k = tsKey(id, "phone"); S.cells = new Set([k]); TS.anchor = k; tsPaintSel(); tsSetCur(k);
     } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); tsAfterEdit(); }
@@ -1892,6 +1977,7 @@ async function tsCommit(move) {
 }
 async function tsSave(id, f, oldV, newV) {
   const r = tsRow(id); if (!r) return;
+  const nm = r.name;
   if (tsCol(f).kind === "v") r[f] = newV === "V"; else r[f] = newV;
   TS.json = ""; renderTasting();
   const show = v => v === null || v === undefined || v === "" ? "空白" : f === "date" ? pgMD(v) : v;
@@ -1903,7 +1989,15 @@ async function tsSave(id, f, oldV, newV) {
         body: `<p>「${esc(r.name)}」的這一格剛被 <b>${esc(res.by || "別人")}</b> 改成 <b>${esc(show(res.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
       });
       if (force) res = await call("ship_tasting_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
+      else { notify(); await refresh(); return; }
     }
+    const autoArch = !!(res && res.archived);
+    pushUndo(`試吃追蹤表 ${nm} ${tsCol(f).t} ${show(newV)} → ${show(oldV)}`, async () => {
+      const id2 = uid("t", id);
+      const u = await call("ship_tasting_set", { p_id: id2, p_field: f, p_old: newV, p_new: oldV, p_force: false });
+      if (u && u.conflict) return { skip: true, by: u.by };
+      if (autoArch) await call("ship_tasting_archive", { p_ids: [id2], p_archived: false });   // 自動封存的一起移回來
+    });
     if (res && res.archived) { if (S.cur && pgParse(S.cur).id === id) { S.cur = null; S.cells = new Set(); } toast(`「${r.name}」已追蹤、已提醒都完成，已移到封存區`); }
     notify(); await refresh();
   } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); TS.json = ""; await refresh(); }
@@ -1975,7 +2069,9 @@ document.addEventListener("dblclick", e => {
 /* ---------- 工具列動作 ---------- */
 async function tsArchive(v) {
   const ids = tsSelIds(); if (!ids.length) return;
-  try { await call("ship_tasting_archive", { p_ids: ids, p_archived: v }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
+  const changed = ids.filter(id => { const r = tsRow(id); return r && !!r.archived !== v; });
+  try { await call("ship_tasting_archive", { p_ids: ids, p_archived: v });
+    if (changed.length) pushUndo(`試吃追蹤表 ${v ? "封存" : "取消封存"}（${changed.length} 位）`, async () => { await call("ship_tasting_archive", { p_ids: changed.map(id => uid("t", id)), p_archived: !v }); }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
 // 在客人名字格按 Delete：刪除選到的名字格那幾位客人（沒有多選時就是游標那一位）
@@ -1986,14 +2082,22 @@ function tsDeleteNames() {
 async function tsDelete(ids) {
   if (!ids || !ids.length) return;
   const names = ids.map(id => (tsRow(id) || {}).name).filter(Boolean).join("、");
-  if (!await confirmBox("刪除客人", `確定要刪除 ${names}？刪除後這些客人的資料就不見了，無法復原。`, "刪除", true)) return;
-  try { await call("ship_tasting_delete", { p_ids: ids }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
+  if (!await confirmBox("刪除客人", `確定要刪除 ${names}？（刪錯了可以按 Ctrl+Z 復原）`, "刪除", true)) return;
+  const snaps = ids.map(id => JSON.parse(JSON.stringify(tsRow(id)))).filter(Boolean);
+  try { await call("ship_tasting_delete", { p_ids: ids });
+    pushUndo(`試吃追蹤表 刪除「${names}」`, async () => { for (const s of snaps) UNDO_MAP["t:" + uid("t", s.id)] = await call("ship_tasting_restore", { p: s }); }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
 async function tsApplyColor(color) {
   const cells = [...S.cells].map(pgParse).filter(p => p.id !== "new" && tsRow(p.id));
   if (!cells.length) return;
-  try { await call("ship_tasting_color", { p_cells: cells.map(p => ({ id: p.id, cell: p.f })), p_color: color }); TS.json = ""; notify(); await refresh(); }
+  const before = cells.map(p => ({ id: p.id, cell: p.f, old: (tsRow(p.id).colors || {})[p.f] || null }));
+  try { await call("ship_tasting_color", { p_cells: cells.map(p => ({ id: p.id, cell: p.f })), p_color: color });
+    pushUndo(`試吃追蹤表 ${color ? "塗色" : "清除顏色"}（${before.length} 格）`, async () => {
+      const now = await call("ship_tasting_list");
+      for (const b of before) { const r = now.find(x => x.id === uid("t", b.id)); if (r && ((r.colors || {})[b.cell] || null) !== (color || null)) return { skip: true, by: "別人" }; }
+      for (const c of [...new Set(before.map(b => b.old))]) await call("ship_tasting_color", { p_cells: before.filter(b => b.old === c).map(b => ({ id: uid("t", b.id), cell: b.cell })), p_color: c });
+    }); TS.json = ""; notify(); await refresh(); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
 function tsArea() {
@@ -2005,6 +2109,49 @@ function tsGo(id, f) {
   const k = tsKey(id, f);
   S.cells = new Set([k]); TS.anchor = k; tsPaintSel(); tsSetCur(k);
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "center", inline: "center" });
+}
+
+/* =================== 返回上一動（Ctrl+Z） =================== */
+// 出貨表、庫存表、進程表、試吃追蹤表共用一條紀錄；只記這台電腦這次打開網頁後做的動作。
+// 每一步存「怎麼退回」；別人改過的就跳過。刪除後復原會拿到新編號，用 UNDO_MAP 對照。
+const UNDO = [], UNDO_MAP = {};
+const uid = (kind, id) => { let k = kind + ":" + id; while (UNDO_MAP[k] !== undefined) { id = UNDO_MAP[k]; k = kind + ":" + id; } return id; };
+function pushUndo(label, run) { UNDO.push({ label, run }); if (UNDO.length > 20) UNDO.shift(); }   // 最多保留最近 20 步
+let undoBusy = false;
+async function doUndo() {
+  if (undoBusy) return;
+  const u = UNDO.pop();
+  if (!u) { toast("沒有可以返回的動作"); return; }
+  undoBusy = true;
+  try {
+    const r = await u.run();
+    notify(); S.ordersJson = ""; S.invJson = ""; PG.json = ""; TS.json = ""; await refresh();
+    toast(r && r.skip ? `這格已經被${r.by || "別人"}改過，無法退回（${u.label}）` : "已退回：" + u.label);
+  } catch (e) {
+    if (!(e instanceof Handled)) await alertBox(`無法退回（${u.label}）：${e.message}`);
+    await refresh();
+  }
+  undoBusy = false;
+}
+document.addEventListener("keydown", e => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key !== "z" && e.key !== "Z")) return;
+  if (!S.me || !S.me.role || !canEdit() || openModals.size) return;
+  if (S.edit || PG.edit || TS.edit) return;   // 正在打字時，Ctrl+Z 是復原格子裡的文字
+  const t = e.target;
+  if (t && ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) && !["editor", "pg-ed", "ts-ed"].includes(t.id)) return;
+  e.preventDefault(); e.stopPropagation();
+  doUndo();
+}, true);
+// 抓某月份最新的出貨表訂單（檢查有沒有被別人改過用）
+async function freshOrders(ym) { return await call("ship_month", { p_month: ym + "-01" }); }
+const undoShow = (f, v) => v === null || v === undefined || v === "" ? "空白"
+  : f === "loc" ? (LOCN[v] || v) : f === "card" ? (v === true ? "○" : v === false ? "✕" : v) : f === "tag" ? (tagName(v) || "空白") : v;
+function sheetFieldLabel(f) {
+  if (f === "kind") return "寄/取"; if (f === "loc") return "門市/工廠"; if (f === "name") return "客人";
+  if (f === "card") return "卡"; if (f === "tag") return "吊牌";
+  if (f.startsWith("c:")) { const i = S.cfg.items.find(x => x.id === Number(f.slice(2))); return i ? i.code : "內容物"; }
+  if (f.startsWith("b:")) { const b = S.cfg.boxes.find(x => x.id === Number(f.slice(2))); return b ? b.name : "禮盒"; }
+  return f;
 }
 
 /* =================== 月統計 =================== */
@@ -2083,11 +2230,20 @@ async function saveStock(p, ed, raw) {
   if (nv === old) return true;
   const [kind, id] = p.o.split(":");
   try {
+    let applied = true;
     let r = await call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: old, p_new: nv, p_force: false });
     if (r && r.conflict) {
       const force = await modal({ title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
         body: `<p>這一格剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(r.current)}</b>。</p><p>要用你輸入的 <b>${esc(nv)}</b> 蓋掉嗎？</p>` });
       if (force) await call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: old, p_new: nv, p_force: true });
+      else applied = false;
+    }
+    if (applied) {
+      const x = (kind === "item" ? S.cfg.items : S.cfg.packs).find(v => v.id === Number(id));
+      pushUndo(`庫存表 ${md(p.f)} ${x ? (x.code || x.name) : ""} ${kind === "item" ? "製作" : "進貨"} ${nv} → ${old}`, async () => {
+        const u = await call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: nv, p_new: old, p_force: false });
+        if (u && u.conflict) return { skip: true, by: u.by };
+      });
     }
     notify(); await refresh(); return true;
   } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); return false; }
