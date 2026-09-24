@@ -90,7 +90,7 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .week{display:flex;align-items:stretch;margin-bottom:0;border-bottom:3px solid var(--grid-strong)}
 .day{border-right:3px solid var(--grid-strong);background:var(--white-sec);display:flex;flex-direction:column}
 .week .day:first-child{border-left:3px solid var(--grid-strong)}
-.dh{height:26px;display:flex;align-items:center;justify-content:center;font-weight:700;background:#fdf1d6;border-bottom:1px solid var(--grid);font-size:13px;position:sticky;top:0;z-index:3}
+.dh{height:26px;display:flex;align-items:center;justify-content:center;font-weight:700;background:#fdf1d6;border-bottom:1px solid var(--grid);font-size:13px}
 .day.sun .dh{background:var(--sun-head);color:#fff}
 table.t{border-collapse:collapse;table-layout:fixed;font-size:12.5px}
 table.t td,table.t th{border:1px dotted var(--grid);height:22px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
@@ -203,6 +203,29 @@ table.plain.items .ops{flex-wrap:nowrap}
 .bom-row{display:grid;grid-template-columns:1fr 110px;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #f0ede5}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;z-index:200}
 
+/* 進程表 */
+.pg-page{padding-bottom:80px}
+.pg-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.pg-head h2{margin:0}
+.pg-remind{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff7e0;border:1px solid #efd489;border-radius:10px;padding:10px 12px;margin:0 0 12px}
+.pg-remind b{margin-right:6px}
+.pg-chip{border:1px solid #e0b949;background:#fff;border-radius:999px;padding:3px 10px;cursor:pointer;font-size:13px}
+.pg-chip:hover{border-color:var(--ink)}
+.pg-table{border-collapse:separate;border-spacing:0;background:#fff;font-size:13px;border-left:1px solid var(--grid);border-top:1px solid var(--grid)}
+.pg-table th,.pg-table td{border-right:1px solid var(--grid);border-bottom:1px solid #ebe7dd;padding:3px 8px;white-space:nowrap;height:24px}
+.pg-table th{position:sticky;top:0;z-index:3;background:#e8f0f8;font-weight:700;padding:6px 8px;border-bottom:1px solid var(--grid)}
+.pg-table .pg-name{position:sticky;left:0;z-index:1;background:#fff;min-width:90px;font-weight:500;text-align:center}
+.pg-table th.pg-name{z-index:4;background:#e8f0f8}
+.pg-table tr.pg-r2 td{border-bottom:1px solid var(--grid-strong)}
+.pg-table td[rowspan]{border-bottom:1px solid var(--grid-strong)}
+.pg-table td.pg-date{min-width:74px;text-align:center;font-variant-numeric:tabular-nums}
+.pg-table td.pg-auto{color:#4c5a70}
+.pg-table td.pg-mark{text-align:center;color:#6b4fb8;font-weight:700}
+.pg-table td.pg-today{color:var(--miss);background:#fde0de;font-weight:700}
+.pg-table td.pg-note{min-width:160px;max-width:360px;white-space:normal}
+.pg-table tr.sel td{box-shadow:inset 0 0 0 999px rgba(47,111,208,.08)}
+.pg-table td.pg-newcell{background:#fbfaf6;height:30px}
+
 @media (max-width:700px){
   .app{grid-template-columns:96px 1fr}
   .top,.bar{padding:6px 10px}
@@ -256,6 +279,7 @@ const ROLE_NAME = { admin: "管理者", cs: "客服", packer: "包裝部", kitch
 const VIEWS = [
   { key: "sheet", label: "出貨表", roles: ["admin", "cs", "packer"], main: true },
   { key: "stock", label: "庫存表", roles: ["admin", "cs", "packer", "kitchen"], main: true },
+  { key: "progress", label: "進程表", roles: ["admin", "cs"], main: true },
   { key: "stats", label: "月統計", roles: ["admin", "cs", "packer"] },
   { key: "settings", label: "設定", roles: ["admin", "cs"] },
   { key: "logs", label: "紀錄", roles: ["admin", "cs"] },
@@ -555,10 +579,11 @@ async function loadData(force) {
     let rev;
     if (!S.revOff) { try { const r = await sb.rpc("ship_rev"); if (!r.error) rev = r.data; } catch (e) {} }
     const month = S.month, view = S.view;
-    const [b, o, inv] = await Promise.all([
+    const [b, o, inv, pg] = await Promise.all([
       call("ship_bootstrap"),
       ["sheet", "stats"].includes(view) ? call("ship_month", { p_month: month + "-01" }) : null,
-      view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null
+      view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null,
+      view === "progress" ? call("ship_progress_list") : null
     ]);
     if (!b.me.role) return boot();
     if (b.me.role !== S.me.role) { S.me = b.me; return boot(); }
@@ -572,6 +597,10 @@ async function loadData(force) {
     if (inv) {
       const j = JSON.stringify(inv);
       if (j !== S.invJson) { S.invJson = j; S.inv = inv; changed = true; }
+    }
+    if (pg) {
+      const j = JSON.stringify(pg);
+      if (j !== PG.json) { PG.json = j; PG.rows = pg; changed = true; }
     }
     if (rev !== undefined) S.rev = rev;
     if (S.view === "logs" && force) await loadLogs(true);
@@ -592,6 +621,7 @@ function renderNav() {
   $("#nav").innerHTML = top.map(btn).join("") + (top.length && rest.length ? `<hr class="nav-sep">` : "") + rest.map(btn).join("");
 }
 function renderBar() {
+  if (S.view === "progress") { $("#bar").hidden = true; $("#tools").innerHTML = pgTools(); return; }
   const monthViews = ["sheet", "stats", "stock"];
   $("#bar").hidden = !monthViews.includes(S.view);
   if ($("#bar").hidden) { $("#tools").innerHTML = ""; return; }
@@ -621,6 +651,7 @@ function render() {
   else if (S.view === "settings") v.innerHTML = renderSettings();
   else if (S.view === "logs") { if (!$("#log-shell")) v.innerHTML = logsShell(); renderLogRows(); }
   else if (S.view === "people") v.innerHTML = renderPeople();
+  else if (S.view === "progress") renderProgress();
 }
 
 /* ---------------- 欄位可見性 ---------------- */
@@ -714,7 +745,7 @@ function parseKey(k) {
   const isNew = o.startsWith("new:");
   return { s, o: isNew ? o : (s === "st" ? o : Number(o)), f, isNew, date: isNew ? o.slice(4) : null };
 }
-const cellOf = k => document.querySelector(`[data-k="${CSS.escape(k)}"]`);
+const cellOf = k => document.querySelector(`[data-k="${CSS.escape(k)}"]`) || document.querySelector(`[data-pk="${CSS.escape(k)}"]`);
 const orderOf = id => S.orders.find(o => o.id === id);
 function paintCursor() {
   document.querySelectorAll("td.cur").forEach(t => t.classList.remove("cur"));
@@ -1056,7 +1087,7 @@ function openMenu(k) {
 
 /* ---------- 塗色 ---------- */
 function closePalette() { const p = $("#palette"); if (p) p.remove(); }
-function openPalette(btn) {
+function openPalette(btn, onPick = applyColor) {
   closePalette();
   const pal = document.createElement("div"); pal.id = "palette"; pal.className = "palette";
   pal.innerHTML = COLORS.map(c => `<button type="button" data-color="${c.k}" style="background:${c.c}">${c.t}</button>`).join("") +
@@ -1065,7 +1096,7 @@ function openPalette(btn) {
   const r = btn.getBoundingClientRect();
   pal.style.top = (r.bottom + 6) + "px";
   pal.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 300)) + "px";
-  pal.onclick = e => { const b = e.target.closest("[data-color]"); if (!b) return; closePalette(); applyColor(b.dataset.color || null); };
+  pal.onclick = e => { const b = e.target.closest("[data-color]"); if (!b) return; closePalette(); onPick(b.dataset.color || null); };
 }
 document.addEventListener("mousedown", e => { if (!e.target.closest("#palette") && !e.target.closest('[data-a="paint"]')) closePalette(); }, true);
 // 這一格現在是不是被狀態染成黃色
@@ -1221,6 +1252,372 @@ document.addEventListener("keydown", e => {
   if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); clearCell(S.cur); return; }
   if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && ["kind", "card", "tag"].includes(p.f)) { e.preventDefault(); openMenu(S.cur); }
 });
+/* =================== 進程表 =================== */
+// 每位客人上下兩列：上面日期、下面符號。自動日期（依希望到貨日往前推）不存資料庫，在這裡算。
+const PG_STAGES = [
+  { k: "contract", t: "合約/回簽", manual: true, marks: ["○", "●"] },
+  { k: "deposit", t: "訂金", manual: true, marks: ["✔"] },
+  { k: "deposit_inv", t: "訂金發票", manual: true, marks: ["✔"] },
+  { k: "form", t: "表單輸入", manual: true, marks: ["✔"] },
+  { k: "remind", t: "提醒小卡", before: 15, marks: ["已提醒"], remind: true, done: m => m === "已提醒" },
+  { k: "card", t: "小卡發印17:00", before: 10, marks: ["×", "△", "○", "●"], remind: true, done: m => ["×", "○", "●"].includes(m) },
+  { k: "final", t: "最終盒數", before: 10, marks: ["✔"], remind: true, done: m => m === "✔" },
+  { k: "form_upd", t: "表單更新", before: 10, marks: ["✔"], remind: true, done: m => m === "✔" },
+  { k: "balance", t: "尾款", before: 7, marks: ["✔"], remind: true, done: m => m === "✔" },
+  { k: "invoice", t: "發票", manual: true, marks: ["✔"] },
+  { k: "label", t: "宅配單", before: 5, marks: ["✔"], remind: true, done: m => m === "✔" },
+  { k: "shipped", t: "出貨完成", manual: true, marks: ["✔"] },
+  { k: "review", t: "評論/退款", manual: true, marks: ["×", "△", "○", "●"], remind: true, done: m => !!m }
+];
+const PG = { rows: [], json: "", archive: false, grid: [], pos: {}, anchor: null, edit: null, dirty: false };
+const pgStage = k => PG_STAGES.find(s => s.k === k);
+const pgRow = id => PG.rows.find(r => r.id === id);
+function pgKey(id, f) { return `p|${id}|${f}`; }
+function pgParse(k) { const [, id, f] = k.split("|"); return { id: id === "new" ? "new" : Number(id), f }; }
+// 日期加減天數（YYYY-MM-DD）
+function pgAddDays(ds, n) { const [y, m, d] = ds.split("-").map(Number); const t = new Date(Date.UTC(y, m - 1, d + n)); return t.toISOString().slice(0, 10); }
+// 今年的日期顯示「9月19日」，不是今年的加上年份「2027年1月25日」
+const pgMD = ds => !ds ? "" : (ds.slice(0, 4) !== S.today.slice(0, 4) ? `${ds.slice(0, 4)}年` : "") + `${Number(ds.slice(5, 7))}月${Number(ds.slice(8, 10))}日`;
+// 某一格的日期：自動欄位依希望到貨日算，其他讀資料
+function pgDate(r, stage) {
+  const s = pgStage(stage);
+  if (s.before) return r.wish ? pgAddDays(r.wish, -s.before) : null;
+  return (r.cells || {})[stage + ".d"] || null;
+}
+function pgValue(r, f) {
+  if (f === "name") return r.name;
+  if (f === "wish") return r.wish || null;
+  const v = (r.cells || {})[f]; return v === undefined ? null : v;
+}
+// 可以打字編輯的格子
+function pgTextCell(f) { return f === "name" || f === "wish" || f === "note" || (f.endsWith(".d") && pgStage(f.slice(0, -2)).manual); }
+// 解析輸入的日期：「9/19」自動選離今天最近的那一年；「2027/1/25」直接指定年份
+function pgParseDate(raw) {
+  const s = raw.trim(); if (!s) return { v: null };
+  let m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/), y, mo, d;
+  if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else {
+    m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})$/); if (!m) return { err: true };
+    mo = +m[1]; d = +m[2];
+    const ty = Number(S.today.slice(0, 4)), base = Date.UTC(ty, Number(S.today.slice(5, 7)) - 1, Number(S.today.slice(8, 10)));
+    let best = null;
+    for (const cy of [ty - 1, ty, ty + 1]) { const t = Date.UTC(cy, mo - 1, d); const diff = Math.abs(t - base); if (best === null || diff < best.diff) best = { cy, diff }; }
+    y = best.cy;
+  }
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return { err: true };
+  return { v: t.toISOString().slice(0, 10) };
+}
+
+// 今日提醒：日期是今天、還沒完成、沒封存的
+function pgReminders() {
+  const out = [];
+  for (const r of PG.rows) {
+    if (r.archived) continue;
+    for (const s of PG_STAGES) {
+      if (!s.remind || pgDate(r, s.k) !== S.today) continue;
+      if (s.done((r.cells || {})[s.k + ".m"])) continue;
+      out.push({ id: r.id, name: r.name, stage: s.k, t: s.t });
+    }
+  }
+  return out;
+}
+
+function renderProgress() {
+  if (PG.edit) { PG.dirty = true; return; }
+  const rows = PG.rows.filter(r => !!r.archived === PG.archive);
+  const nArch = PG.rows.filter(r => r.archived).length;
+  const rem = PG.archive ? [] : pgReminders();
+  const grid = [];
+  const cell = (r, f, cls, text, extra = "") => {
+    const k = pgKey(r.id, f); const col = (r.colors || {})[f];
+    return `<td data-pk="${esc(k)}" class="${cls}" ${col ? `style="background:${colorHex(col)}"` : ""} ${extra}>${text}</td>`;
+  };
+  let body = "";
+  rows.forEach(r => {
+    const top = ["name", "wish"], bot = ["name", "wish"];
+    let t1 = cell(r, "name", "pg-name", esc(r.name), `rowspan="2"`) +
+      cell(r, "wish", "pg-date", pgMD(r.wish), `rowspan="2" title="${r.wish || ""}"`);
+    let t2 = "";
+    PG_STAGES.forEach(s => {
+      const d = pgDate(r, s.k);
+      t1 += cell(r, s.k + ".d", "pg-date" + (s.before ? " pg-auto" : "") + (d === S.today ? " pg-today" : ""), pgMD(d), `title="${d || ""}"`);
+      t2 += cell(r, s.k + ".m", "pg-mark", esc((r.cells || {})[s.k + ".m"] || ""));
+      top.push(s.k + ".d"); bot.push(s.k + ".m");
+    });
+    t1 += cell(r, "note", "pg-note", esc((r.cells || {}).note || ""), `rowspan="2"`);
+    top.push("note"); bot.push("note");
+    grid.push(top.map(f => pgKey(r.id, f)), bot.map(f => pgKey(r.id, f)));
+    body += `<tr class="pg-r1" data-id="${r.id}">${t1}</tr><tr class="pg-r2" data-id="${r.id}">${t2}</tr>`;
+  });
+  if (!PG.archive) {
+    body += `<tr class="pg-new"><td data-pk="p|new|name" class="pg-name pg-newcell" title="打客人名字就會新增"></td><td colspan="${PG_STAGES.length + 2}"></td></tr>`;
+    grid.push(["p|new|name"]);
+  }
+  PG.grid = grid; PG.pos = {};
+  grid.forEach((row, ri) => row.forEach((k, ci) => { if (!(k in PG.pos)) PG.pos[k] = [ri, ci]; }));
+
+  $("#view").innerHTML = `<div class="page pg-page">
+    <div class="pg-head"><h2>${PG.archive ? "進程表：封存區" : "進程表"}</h2>
+      <button class="btn ghost" type="button" data-a="pg-area">${PG.archive ? "回到進程表" : `封存區（${nArch}）`}</button></div>
+    ${PG.archive ? `<p class="muted" style="margin:0 0 10px">這裡只顯示已封存的客人，可以直接編輯；選取後按上方的「取消封存」就會回到進程表。</p>` :
+      `<div class="pg-remind"><b>今日提醒</b>${rem.length ? rem.map(x => `<button type="button" class="pg-chip" data-a="pg-go" data-id="${x.id}" data-stage="${x.stage}">${esc(x.name)}｜${esc(x.t)}</button>`).join("")
+        : `<span class="muted">今天沒有要處理的項目</span>`}</div>`}
+    <table class="pg-table"><thead><tr><th class="pg-name">姓名</th><th>希望到貨日</th>${PG_STAGES.map(s => `<th>${esc(s.t)}</th>`).join("")}<th class="pg-note">備註</th></tr></thead>
+    <tbody>${body || `<tr><td colspan="${PG_STAGES.length + 3}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div>`;
+  if (S.cur && !cellOf(S.cur)) S.cur = null;
+  pgPaintSel(); paintCursor(); paintPresence(); pgPlaceEditor();
+}
+function pgTools() {
+  if (!canEdit()) return "";
+  const ids = pgSelIds(), n = ids.length;
+  return `<span class="count">${n ? `已選 ${n} 位客人` : "點一格選取，Ctrl／Shift 可多選"}</span>
+    ${PG.archive ? `<button class="btn ghost" type="button" data-a="pg-unarchive" ${n ? "" : "disabled"}>取消封存</button>`
+      : `<button class="btn ghost" type="button" data-a="pg-archive" ${n ? "" : "disabled"}>封存</button>`}
+    <button class="btn ghost danger-text" type="button" data-a="pg-delete" ${n ? "" : "disabled"}>刪除</button>
+    <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>`;
+}
+function pgSelIds() { return [...new Set([...S.cells].map(pgParse).map(p => p.id).filter(id => id !== "new"))]; }
+function pgPaintSel() {
+  document.querySelectorAll(".pg-table td.csel").forEach(t => t.classList.remove("csel"));
+  document.querySelectorAll(".pg-table tr.sel").forEach(t => t.classList.remove("sel"));
+  if (S.cells.size > 1) S.cells.forEach(k => { const c = cellOf(k); if (c) c.classList.add("csel"); });
+  const ids = new Set(pgSelIds());
+  document.querySelectorAll(".pg-table tr[data-id]").forEach(tr => tr.classList.toggle("sel", ids.has(Number(tr.dataset.id))));
+  $("#tools").innerHTML = pgTools();
+}
+function pgRect(a, b) {
+  const pa = PG.pos[a], pb = PG.pos[b]; if (!pa || !pb) return [b];
+  const out = new Set();
+  for (let r = Math.min(pa[0], pb[0]); r <= Math.max(pa[0], pb[0]); r++)
+    for (let c = Math.min(pa[1], pb[1]); c <= Math.max(pa[1], pb[1]); c++) { const k = (PG.grid[r] || [])[c]; if (k && k !== "p|new|name") out.add(k); }
+  return [...out];
+}
+function pgSetCur(k) {
+  S.cur = k; paintCursor(); trackPresence(k);
+  const c = cellOf(k); if (c) c.scrollIntoView({ block: "nearest", inline: "nearest" });
+  pgPlaceEditor();
+}
+function pgMove(dir) {
+  const p = PG.pos[S.cur]; if (!p) return;
+  let [r, c] = p;
+  const [dr, dc] = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[dir];
+  for (let i = 0; i < 4; i++) {   // 姓名、希望到貨日、備註佔兩列，同一格會出現兩次，要多走一步
+    r += dr; c += dc;
+    if (r < 0 || r >= PG.grid.length) return;
+    const row = PG.grid[r];
+    if (c < 0 || (dc && c >= row.length)) return;
+    const k = row[Math.min(c, row.length - 1)];
+    if (k !== S.cur) { S.cells = new Set(k === "p|new|name" ? [] : [k]); PG.anchor = k; pgPaintSel(); return pgSetCur(k); }
+  }
+}
+
+/* ---------- 編輯框：選到格子時放一個隱形輸入框，直接打字（含中文輸入法）就開始編輯 ---------- */
+function pgEditorEl() {
+  let e = $("#pg-ed");
+  if (!e) {
+    e = document.createElement("input"); e.id = "pg-ed"; e.className = "editor armed"; e.type = "text"; e.autocomplete = "off"; e.hidden = true;
+    e.addEventListener("keydown", pgEdKey);
+    const begin = () => {
+      if (PG.edit || !S.cur) return;
+      const p = pgParse(S.cur);
+      if (!canEdit() || !pgTextCell(p.f)) { e.value = ""; return; }
+      PG.edit = { key: S.cur, old: p.id === "new" ? null : pgValue(pgRow(p.id), p.f) };
+      e.classList.remove("armed"); trackPresence(S.cur);
+    };
+    e.addEventListener("input", begin);
+    e.addEventListener("compositionstart", begin);
+    e.addEventListener("blur", () => { if (PG.edit && !PG.edit.closing && !openModals.size) pgCommit(null); });
+    $("#scroll").appendChild(e);
+  }
+  return e;
+}
+function pgPlaceEditor() {
+  const e = pgEditorEl();
+  const k = PG.edit ? PG.edit.key : S.cur;
+  const c = S.view === "progress" && k && cellOf(k);
+  if (!c) { e.hidden = true; return; }
+  const host = $("#scroll"), hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  e.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; e.style.top = (cr.top - hr.top + host.scrollTop) + "px";
+  e.style.width = Math.max(cr.width, PG.edit ? 90 : cr.width) + "px"; e.style.height = Math.min(cr.height, 30) + "px";
+  e.classList.toggle("armed", !PG.edit);
+  if (!PG.edit) e.value = "";
+  e.hidden = false;
+  if (document.activeElement !== e && !openModals.size && !$("#pg-menu")) e.focus({ preventScroll: true });
+}
+function pgStartEdit(k) {
+  const p = pgParse(k); if (!canEdit() || !pgTextCell(p.f)) return;
+  const r = p.id === "new" ? null : pgRow(p.id);
+  const v = r ? pgValue(r, p.f) : null;
+  PG.edit = { key: k, old: v };
+  const e = pgEditorEl();
+  e.value = v === null ? "" : (p.f === "wish" || p.f.endsWith(".d")) ? `${Number(v.slice(5, 7))}/${Number(v.slice(8, 10))}` : v;
+  pgPlaceEditor(); e.focus(); e.select(); trackPresence(k);
+}
+function pgEdKey(e) {
+  if (e.isComposing) return;
+  const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+  if (!PG.edit) {
+    if (!S.cur) return;
+    const p = pgParse(S.cur);
+    if (map[e.key]) { e.preventDefault(); return pgMove(map[e.key]); }
+    if (e.key === "Tab") { e.preventDefault(); return pgMove(e.shiftKey ? "left" : "right"); }
+    if (!canEdit()) { if (e.key.length === 1) e.preventDefault(); return; }
+    if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); return p.f.endsWith(".m") ? pgOpenMenu(S.cur) : pgStartEdit(S.cur); }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); return pgClear(S.cur); }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !pgTextCell(p.f)) { e.preventDefault(); if (p.f.endsWith(".m")) pgOpenMenu(S.cur); }
+    return;
+  }
+  if (e.key === "Enter") { e.preventDefault(); pgCommit("down"); }
+  else if (e.key === "Tab") { e.preventDefault(); pgCommit(e.shiftKey ? "left" : "right"); }
+  else if (e.key === "Escape") { e.preventDefault(); PG.edit = null; pgAfterEdit(); }
+}
+function pgAfterEdit() {
+  const e = pgEditorEl(); e.value = "";
+  trackPresence(S.cur);
+  if (PG.dirty) { PG.dirty = false; renderProgress(); } else pgPlaceEditor();
+}
+async function pgCommit(move) {
+  const ed = PG.edit; if (!ed || ed.closing) return;
+  ed.closing = true;
+  const raw = pgEditorEl().value;
+  const p = pgParse(ed.key);
+  let nv;
+  if (p.f === "wish" || p.f.endsWith(".d")) {
+    const d = pgParseDate(raw);
+    if (d.err) { PG.edit = null; pgAfterEdit(); await alertBox(`看不懂「${raw.trim()}」這個日期。請打像「9/19」或「2027/1/25」這樣的格式。`); pgPlaceEditor(); return; }
+    nv = d.v;
+  } else if (p.f === "name") {
+    nv = raw.trim();
+    if (!nv) { PG.edit = null; pgAfterEdit(); return; }
+  } else nv = raw.trim() || null;
+  PG.edit = null;
+  if (p.id === "new") {
+    try {
+      const id = await call("ship_progress_create", { p_name: nv });
+      notify(); await refresh();
+      S.cells = new Set([pgKey(id, "wish")]); PG.anchor = pgKey(id, "wish"); pgPaintSel(); pgSetCur(pgKey(id, "wish"));
+    } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); pgAfterEdit(); }
+    return;
+  }
+  if (nv !== ed.old) await pgSave(p.id, p.f, ed.old, nv);
+  pgAfterEdit();
+  if (move) pgMove(move);
+}
+async function pgSave(id, f, oldV, newV) {
+  const r = pgRow(id); if (!r) return;
+  // 先改畫面，再存
+  if (f === "name") r.name = newV; else if (f === "wish") r.wish = newV;
+  else { r.cells = { ...(r.cells || {}) }; if (newV === null) delete r.cells[f]; else r.cells[f] = newV; }
+  PG.json = ""; renderProgress();
+  const show = v => v === null || v === undefined || v === "" ? "空白" : (f === "wish" || f.endsWith(".d")) ? pgMD(v) : v;
+  try {
+    let res = await call("ship_progress_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
+    if (res && res.conflict) {
+      const force = await modal({
+        title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
+        body: `<p>「${esc(r.name)}」的這一格剛被 <b>${esc(res.by || "別人")}</b> 改成 <b>${esc(show(res.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
+      });
+      if (force) res = await call("ship_progress_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
+    }
+    notify(); await refresh();
+  } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); PG.json = ""; await refresh(); }
+}
+async function pgClear(k) {
+  const p = pgParse(k); if (p.id === "new" || p.f === "name") return;
+  if (!p.f.endsWith(".m") && !pgTextCell(p.f)) return;   // 自動日期不能改
+  const r = pgRow(p.id); if (!r) return;
+  const old = pgValue(r, p.f); if (old === null) return;
+  await pgSave(p.id, p.f, old, null);
+}
+
+/* ---------- 符號選單 ---------- */
+function pgCloseMenu() { const m = $("#pg-menu"); if (m) m.remove(); }
+function pgOpenMenu(k) {
+  pgCloseMenu();
+  const p = pgParse(k); if (!canEdit() || p.id === "new" || !p.f.endsWith(".m")) return;
+  const r = pgRow(p.id), s = pgStage(p.f.slice(0, -2)), c = cellOf(k); if (!r || !s || !c) return;
+  const cur = pgValue(r, p.f);
+  const m = document.createElement("div"); m.id = "pg-menu"; m.className = "menu";
+  m.innerHTML = s.marks.map(x => `<button type="button" data-v="${esc(x)}" ${x === cur ? `class="hl"` : ""}>${esc(x)}</button>`).join("") +
+    `<div class="hint" style="color:var(--soft)">要清除請按 Delete</div>`;
+  const host = $("#scroll"); host.appendChild(m);
+  const hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  m.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; m.style.top = (cr.bottom - hr.top + host.scrollTop + 2) + "px";
+  m.querySelectorAll("button").forEach(b => b.onclick = async () => {
+    pgCloseMenu(); trackPresence(S.cur);
+    if (b.dataset.v !== cur) await pgSave(r.id, p.f, cur, b.dataset.v);
+    pgPlaceEditor();
+  });
+  trackPresence(k);
+  (m.querySelector("button.hl") || m.querySelector("button")).focus();
+  m.addEventListener("keydown", e => {
+    const bs = [...m.querySelectorAll("button")]; const i = bs.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); (bs[i + 1] || bs[0]).focus(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); (bs[i - 1] || bs[bs.length - 1]).focus(); }
+    if (e.key === "Escape") { e.preventDefault(); pgCloseMenu(); trackPresence(S.cur); pgPlaceEditor(); }
+    e.stopPropagation();
+  });
+}
+
+/* ---------- 滑鼠：選格子 ---------- */
+document.addEventListener("mousedown", e => {
+  if (S.view !== "progress" || !S.me || !S.me.role) return;
+  if (e.target.closest("#pg-menu")) return;
+  pgCloseMenu();
+  if (e.target.id === "pg-ed") return;
+  const td = e.target.closest && e.target.closest("td[data-pk]"); if (!td) return;
+  e.preventDefault();
+  if (PG.edit) pgCommit(null);
+  const k = td.dataset.pk, ctrl = e.ctrlKey || e.metaKey;
+  if (k === "p|new|name") { S.cells = new Set(); PG.anchor = null; }
+  else if (e.shiftKey && PG.anchor) S.cells = new Set([...(ctrl ? S.cells : []), ...pgRect(PG.anchor, k)]);
+  else if (ctrl) { S.cells.has(k) ? S.cells.delete(k) : S.cells.add(k); PG.anchor = k; }
+  else { S.cells = new Set([k]); PG.anchor = k; }
+  PG.click = !ctrl && !e.shiftKey ? k : null;
+  pgPaintSel(); pgSetCur(k);
+});
+document.addEventListener("mouseup", e => {
+  if (S.view !== "progress") return;
+  const k = PG.click; PG.click = null; if (!k) return;
+  const td = e.target.closest && e.target.closest("td[data-pk]");
+  if (td && td.dataset.pk === k && k.endsWith(".m") && canEdit()) pgOpenMenu(k);
+});
+document.addEventListener("dblclick", e => {
+  if (S.view !== "progress") return;
+  const td = e.target.closest && e.target.closest("td[data-pk]"); if (td) pgStartEdit(td.dataset.pk);
+});
+
+/* ---------- 工具列動作 ---------- */
+async function pgArchive(v) {
+  const ids = pgSelIds(); if (!ids.length) return;
+  try { await call("ship_progress_archive", { p_ids: ids, p_archived: v }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
+  catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
+}
+async function pgDelete() {
+  const ids = pgSelIds(); if (!ids.length) return;
+  const names = ids.map(id => (pgRow(id) || {}).name).filter(Boolean).join("、");
+  if (!await confirmBox("刪除客人", `確定要刪除 ${names}？刪除後這些客人的資料就不見了，無法復原。`, "刪除", true)) return;
+  try { await call("ship_progress_delete", { p_ids: ids }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
+  catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
+}
+async function pgApplyColor(color) {
+  const cells = [...S.cells].map(pgParse).filter(p => p.id !== "new" && pgRow(p.id));
+  if (!cells.length) return;
+  try { await call("ship_progress_color", { p_cells: cells.map(p => ({ id: p.id, cell: p.f })), p_color: color }); PG.json = ""; notify(); await refresh(); }
+  catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
+}
+function pgArea() {
+  PG.archive = !PG.archive; S.cells = new Set(); S.cur = null; PG.anchor = null; trackPresence(null);
+  $("#scroll").scrollTo(0, 0); renderProgress();
+}
+function pgGo(id, stage) {
+  if (PG.archive) { PG.archive = false; renderProgress(); }
+  const k = pgKey(id, stage + ".m");
+  S.cells = new Set([k]); PG.anchor = k; pgPaintSel(); pgSetCur(k);
+  const c = cellOf(k); if (c) c.scrollIntoView({ block: "center", inline: "center" });
+}
+
 /* =================== 月統計 =================== */
 function renderStats() {
   const ym = S.month;
@@ -1819,7 +2216,8 @@ async function goMonth(ym) {
 async function goView(v) {
   if (S.touched && await checkIncomplete()) return;
   if (S.edit) await commitEdit(null);
-  S.view = v; S.cur = null; closeMenu(); trackPresence(null);
+  if (PG.edit) await pgCommit(null);
+  S.view = v; S.cur = null; S.cells = new Set(); closeMenu(); pgCloseMenu(); trackPresence(null); pgPlaceEditor();
   $("#view").innerHTML = `<div class="page muted">載入中</div>`;
   $("#scroll").scrollTo(0, 0);
   renderNav(); renderBar();
@@ -1837,7 +2235,12 @@ document.addEventListener("click", e => {
   if (act === "st-packed") return setStatus("packed");
   if (act === "st-none") return setStatus("none");
   if (act === "move") return moveDate();
-  if (act === "paint") return openPalette(a);
+  if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : applyColor);
+  if (act === "pg-archive") return pgArchive(true);
+  if (act === "pg-unarchive") return pgArchive(false);
+  if (act === "pg-delete") return pgDelete();
+  if (act === "pg-area") return pgArea();
+  if (act === "pg-go") return pgGo(Number(a.dataset.id), a.dataset.stage);
   if (act === "more-logs") return loadLogs(false).catch(() => {});
   if (act === "clear-logs") { S.logs.f = { from: "", to: "", actor: "", customer: "" }; $("#view").innerHTML = logsShell(); return loadLogs(true).catch(() => {}); }
 });
