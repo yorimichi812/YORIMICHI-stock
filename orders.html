@@ -1384,7 +1384,6 @@ function pgTools() {
   return `<span class="count">${n ? `已選 ${n} 位客人` : "點一格選取，Ctrl／Shift 可多選"}</span>
     ${PG.archive ? `<button class="btn ghost" type="button" data-a="pg-unarchive" ${n ? "" : "disabled"}>取消封存</button>`
       : `<button class="btn ghost" type="button" data-a="pg-archive" ${n ? "" : "disabled"}>封存</button>`}
-    <button class="btn ghost danger-text" type="button" data-a="pg-delete" ${n ? "" : "disabled"}>刪除</button>
     <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>`;
 }
 function pgSelIds() { return [...new Set([...S.cells].map(pgParse).map(p => p.id).filter(id => id !== "new"))]; }
@@ -1474,7 +1473,11 @@ function pgEdKey(e) {
     if (e.key === "Tab") { e.preventDefault(); return pgMove(e.shiftKey ? "left" : "right"); }
     if (!canEdit()) { if (e.key.length === 1) e.preventDefault(); return; }
     if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); return p.f.endsWith(".m") ? pgOpenMenu(S.cur) : pgStartEdit(S.cur); }
-    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); return pgClear(S.cur); }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      if (p.f === "name") return pgDeleteNames();
+      return pgClear(S.cur);
+    }
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !pgTextCell(p.f)) { e.preventDefault(); if (p.f.endsWith(".m")) pgOpenMenu(S.cur); }
     return;
   }
@@ -1604,8 +1607,13 @@ async function pgArchive(v) {
   try { await call("ship_progress_archive", { p_ids: ids, p_archived: v }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
-async function pgDelete() {
-  const ids = pgSelIds(); if (!ids.length) return;
+// 在客人名字格按 Delete：刪除選到的名字格那幾位客人（沒有多選時就是游標那一位）
+function pgDeleteNames() {
+  const ids = [...new Set([...S.cells, S.cur].filter(Boolean).map(pgParse).filter(p => p.f === "name" && p.id !== "new").map(p => p.id))];
+  return pgDelete(ids);
+}
+async function pgDelete(ids) {
+  if (!ids || !ids.length) return;
   const names = ids.map(id => (pgRow(id) || {}).name).filter(Boolean).join("、");
   if (!await confirmBox("刪除客人", `確定要刪除 ${names}？刪除後這些客人的資料就不見了，無法復原。`, "刪除", true)) return;
   try { await call("ship_progress_delete", { p_ids: ids }); S.cells = new Set(); S.cur = null; notify(); PG.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
@@ -1707,7 +1715,6 @@ function tsTools() {
   return `<span class="count">${n ? `已選 ${n} 位客人` : "點一格選取，Ctrl／Shift 可多選"}</span>
     ${TS.archive ? `<button class="btn ghost" type="button" data-a="ts-unarchive" ${n ? "" : "disabled"}>取消封存</button>`
       : `<button class="btn ghost" type="button" data-a="ts-archive" ${n ? "" : "disabled"}>封存</button>`}
-    <button class="btn ghost danger-text" type="button" data-a="ts-delete" ${n ? "" : "disabled"}>刪除</button>
     <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>`;
 }
 function tsPaintSel() {
@@ -1799,7 +1806,11 @@ function tsEdKey(e) {
     if (e.key === "Tab") { e.preventDefault(); return tsMove(e.shiftKey ? "left" : "right"); }
     if (!canEdit()) { if (e.key.length === 1) e.preventDefault(); return; }
     if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); return tsText(p.f) ? tsStartEdit(S.cur) : tsActivate(S.cur); }
-    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); return tsClear(S.cur); }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      if (p.f === "name") return tsDeleteNames();
+      return tsClear(S.cur);
+    }
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !tsText(p.f)) { e.preventDefault(); tsActivate(S.cur); }
     return;
   }
@@ -1926,8 +1937,13 @@ async function tsArchive(v) {
   try { await call("ship_tasting_archive", { p_ids: ids, p_archived: v }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
   catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
 }
-async function tsDelete() {
-  const ids = tsSelIds(); if (!ids.length) return;
+// 在客人名字格按 Delete：刪除選到的名字格那幾位客人（沒有多選時就是游標那一位）
+function tsDeleteNames() {
+  const ids = [...new Set([...S.cells, S.cur].filter(Boolean).map(pgParse).filter(p => p.f === "name" && p.id !== "new").map(p => p.id))];
+  return tsDelete(ids);
+}
+async function tsDelete(ids) {
+  if (!ids || !ids.length) return;
   const names = ids.map(id => (tsRow(id) || {}).name).filter(Boolean).join("、");
   if (!await confirmBox("刪除客人", `確定要刪除 ${names}？刪除後這些客人的資料就不見了，無法復原。`, "刪除", true)) return;
   try { await call("ship_tasting_delete", { p_ids: ids }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
@@ -2571,12 +2587,10 @@ document.addEventListener("click", e => {
   if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : S.view === "tasting" ? tsApplyColor : applyColor);
   if (act === "ts-archive") return tsArchive(true);
   if (act === "ts-unarchive") return tsArchive(false);
-  if (act === "ts-delete") return tsDelete();
   if (act === "ts-area") return tsArea();
   if (act === "ts-go") return tsGo(Number(a.dataset.id), a.dataset.f);
   if (act === "pg-archive") return pgArchive(true);
   if (act === "pg-unarchive") return pgArchive(false);
-  if (act === "pg-delete") return pgDelete();
   if (act === "pg-area") return pgArea();
   if (act === "pg-go") return pgGo(Number(a.dataset.id), a.dataset.stage);
   if (act === "more-logs") return loadLogs(false).catch(() => {});
