@@ -226,6 +226,10 @@ table.plain.items .ops{flex-wrap:nowrap}
 .pg-table td.pg-note{min-width:160px;max-width:360px;white-space:normal}
 .pg-table tr.sel td{box-shadow:inset 0 0 0 999px rgba(47,111,208,.08)}
 .pg-table td.pg-newcell{background:#fbfaf6;height:30px}
+/* 紀錄頁：前五欄不換行，內容欄吃剩下的寬度 */
+table.log-table th{white-space:nowrap}
+table.log-table td:nth-child(-n+5){white-space:nowrap}
+table.log-table td:nth-child(6){width:100%}
 .pp-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;background:#fff;border:1px solid var(--rule);border-radius:10px;padding:12px 14px;margin-bottom:6px}
 .pp-handout{background:var(--green-soft);border-radius:9px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.7}
 .pp-handout b{display:block;font-size:14.5px}
@@ -1289,10 +1293,14 @@ document.addEventListener("drop", async e => {
     pushUndo(`出貨表 ${md(info.d)} 移動「${mv ? mv.name : ""}」的順序`, async () => {
       // 同一天這一區的順序如果已經跟我拖完的不一樣，代表別人動過，就不退回
       const key = info.s === "w" ? "sort_white" : "sort_green";
-      const now = (await freshOrders(info.d.slice(0, 7))).filter(o => o.ship_date === info.d)
-        .sort((a, b) => a[key] - b[key] || a.id - b.id).map(o => o.id);
+      const rows = (await freshOrders(info.d.slice(0, 7))).filter(o => o.ship_date === info.d)
+        .sort((a, b) => a[key] - b[key] || a.id - b.id);
+      const now = rows.map(o => o.id);
       const mine = ids.map(x => uid("o", x)).filter(x => now.includes(x));
-      if (now.filter(x => mine.includes(x)).join(",") !== mine.join(",")) return { skip: true, by: "別人" };
+      if (now.filter(x => mine.includes(x)).join(",") !== mine.join(",")) {
+        const by = rows.map(o => o[info.s === "w" ? "sort_white_by" : "sort_green_by"]).find(n => n && n !== S.me.name);
+        return { skip: true, by: by || "別人" };
+      }
       await call("ship_order_reorder", { p_date: info.d, p_section: info.s === "w" ? "white" : "green", p_ids: oldIds.map(x => uid("o", x)) });
     });
     notify();
@@ -2726,7 +2734,7 @@ function logsShell() {
       <div><label class="lbl" for="lf-cust">客人名字</label><input type="text" id="lf-cust" value="${esc(f.customer)}" placeholder="輸入部分名字"></div>
       <button class="btn ghost" type="button" data-a="clear-logs">清除篩選</button>
     </div>
-    <table class="plain" style="width:100%"><thead><tr><th>時間</th><th>人員</th><th>動作</th><th>日期</th><th>客人</th><th>內容</th></tr></thead><tbody id="log-rows"></tbody></table>
+    <table class="plain log-table" style="width:100%"><thead><tr><th>時間</th><th>人員</th><th>動作</th><th>日期</th><th>客人</th><th>內容</th></tr></thead><tbody id="log-rows"></tbody></table>
     <div style="text-align:center;padding:14px" id="log-more" hidden><button class="btn ghost" type="button" data-a="more-logs">載入更早的紀錄</button></div></div>`;
 }
 function renderLogRows() {
