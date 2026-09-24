@@ -1375,15 +1375,15 @@ const PG_STAGES = [
   { k: "deposit", t: "訂金", manual: true, marks: ["✔"] },
   { k: "deposit_inv", t: "訂金發票", manual: true, marks: ["✔"] },
   { k: "form", t: "表單輸入", manual: true, marks: ["✔"] },
-  { k: "remind", t: "提醒小卡", before: 15, marks: ["已提醒"], remind: true, done: m => m === "已提醒" },
-  { k: "card", t: "小卡發印17:00", before: 10, marks: ["×", "△", "○", "●"], remind: true, done: m => ["×", "○", "●"].includes(m) },
-  { k: "final", t: "最終盒數", before: 10, marks: ["✔"], remind: true, done: m => m === "✔" },
-  { k: "form_upd", t: "表單更新", before: 10, marks: ["✔"], remind: true, done: m => m === "✔" },
-  { k: "balance", t: "尾款", before: 7, marks: ["✔"], remind: true, done: m => m === "✔" },
-  { k: "invoice", t: "發票", manual: true, marks: ["✔"] },
+  { k: "remind", t: "提醒小卡", before: 15, marks: ["已提醒", "×"], free: true, remind: true, done: m => !!m },
+  { k: "card", t: "小卡發印17:00", before: 10, marks: ["×", "△", "○", "●"], free: true, remind: true, done: m => !!m && m !== "△" },
+  { k: "final", t: "最終盒數", before: 10, marks: ["✔", "×"], remind: true, done: m => !!m },
+  { k: "form_upd", t: "表單更新", before: 10, marks: ["✔", "×"], remind: true, done: m => !!m },
+  { k: "balance", t: "尾款", before: 7, marks: ["✔", "×"], remind: true, done: m => !!m },
+  { k: "invoice", t: "發票", manual: true, marks: ["✔", "×"] },
   { k: "label", t: "宅配單", before: 5, marks: ["✔"], remind: true, done: m => m === "✔" },
   { k: "shipped", t: "出貨完成", manual: true, marks: ["✔"] },
-  { k: "review", t: "評論/退款", manual: true, marks: ["×", "△", "○", "●"], remind: true, done: m => !!m }
+  { k: "review", t: "評論/退款", manual: true, marks: ["×", "△", "○", "●"], free: true, remind: true, done: m => !!m }
 ];
 const PG = { rows: [], json: "", archive: false, grid: [], pos: {}, anchor: null, edit: null, dirty: false };
 const pgStage = k => PG_STAGES.find(s => s.k === k);
@@ -1560,8 +1560,10 @@ function pgPlaceEditor() {
   e.hidden = false;
   if (document.activeElement !== e && !openModals.size && !$("#pg-menu")) e.focus({ preventScroll: true });
 }
-function pgStartEdit(k) {
-  const p = pgParse(k); if (!canEdit() || !pgTextCell(p.f)) return;
+function pgStartEdit(k, freeMark) {
+  const p = pgParse(k);
+  const okFree = freeMark && p.f.endsWith(".m") && (pgStage(p.f.slice(0, -2)) || {}).free;
+  if (!canEdit() || (!pgTextCell(p.f) && !okFree)) return;
   const r = p.id === "new" ? null : pgRow(p.id);
   const v = r ? pgValue(r, p.f) : null;
   PG.edit = { key: k, old: v };
@@ -1674,12 +1676,14 @@ function pgOpenMenu(k) {
   const cur = pgValue(r, p.f);
   const m = document.createElement("div"); m.id = "pg-menu"; m.className = "menu";
   m.innerHTML = s.marks.map(x => `<button type="button" data-v="${esc(x)}" ${x === cur ? `class="hl"` : ""}>${esc(x)}</button>`).join("") +
+    (s.free ? `<button type="button" data-free="1" ${cur && !s.marks.includes(cur) ? `class="hl"` : ""}>自己輸入…</button>` : "") +
     `<div class="hint" style="color:var(--soft)">要清除請按 Delete</div>`;
   const host = $("#scroll"); host.appendChild(m);
   const hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
   m.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; m.style.top = (cr.bottom - hr.top + host.scrollTop + 2) + "px";
   m.querySelectorAll("button").forEach(b => b.onclick = async () => {
     pgCloseMenu(); trackPresence(S.cur);
+    if (b.dataset.free) return pgStartEdit(k, true);
     if (b.dataset.v !== cur) await pgSave(r.id, p.f, cur, b.dataset.v);
     pgPlaceEditor();
   });
