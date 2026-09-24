@@ -225,6 +225,8 @@ table.plain.items .ops{flex-wrap:nowrap}
 .pg-table td.pg-note{min-width:160px;max-width:360px;white-space:normal}
 .pg-table tr.sel td{box-shadow:inset 0 0 0 999px rgba(47,111,208,.08)}
 .pg-table td.pg-newcell{background:#fbfaf6;height:30px}
+.ts-table tr.ts-r td{border-bottom:1px solid var(--grid)}
+.ts-table td.ts-menu{text-align:center}
 
 @media (max-width:700px){
   .app{grid-template-columns:96px 1fr}
@@ -280,6 +282,7 @@ const VIEWS = [
   { key: "sheet", label: "出貨表", roles: ["admin", "cs", "packer"], main: true },
   { key: "stock", label: "庫存表", roles: ["admin", "cs", "packer", "kitchen"], main: true },
   { key: "progress", label: "進程表", roles: ["admin", "cs"], main: true },
+  { key: "tasting", label: "試吃追蹤表", roles: ["admin", "cs"], main: true },
   { key: "stats", label: "月統計", roles: ["admin", "cs", "packer"] },
   { key: "settings", label: "設定", roles: ["admin", "cs"] },
   { key: "logs", label: "紀錄", roles: ["admin", "cs"] },
@@ -579,11 +582,12 @@ async function loadData(force) {
     let rev;
     if (!S.revOff) { try { const r = await sb.rpc("ship_rev"); if (!r.error) rev = r.data; } catch (e) {} }
     const month = S.month, view = S.view;
-    const [b, o, inv, pg] = await Promise.all([
+    const [b, o, inv, pg, ts] = await Promise.all([
       call("ship_bootstrap"),
       ["sheet", "stats"].includes(view) ? call("ship_month", { p_month: month + "-01" }) : null,
       view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null,
-      view === "progress" ? call("ship_progress_list") : null
+      view === "progress" ? call("ship_progress_list") : null,
+      view === "tasting" ? call("ship_tasting_list") : null
     ]);
     if (!b.me.role) return boot();
     if (b.me.role !== S.me.role) { S.me = b.me; return boot(); }
@@ -601,6 +605,10 @@ async function loadData(force) {
     if (pg) {
       const j = JSON.stringify(pg);
       if (j !== PG.json) { PG.json = j; PG.rows = pg; changed = true; }
+    }
+    if (ts) {
+      const j = JSON.stringify(ts);
+      if (j !== TS.json) { TS.json = j; TS.rows = ts; changed = true; }
     }
     if (rev !== undefined) S.rev = rev;
     if (S.view === "logs" && force) await loadLogs(true);
@@ -622,6 +630,7 @@ function renderNav() {
 }
 function renderBar() {
   if (S.view === "progress") { $("#bar").hidden = true; $("#tools").innerHTML = pgTools(); return; }
+  if (S.view === "tasting") { $("#bar").hidden = true; $("#tools").innerHTML = tsTools(); return; }
   const monthViews = ["sheet", "stats", "stock"];
   $("#bar").hidden = !monthViews.includes(S.view);
   if ($("#bar").hidden) { $("#tools").innerHTML = ""; return; }
@@ -652,6 +661,7 @@ function render() {
   else if (S.view === "logs") { if (!$("#log-shell")) v.innerHTML = logsShell(); renderLogRows(); }
   else if (S.view === "people") v.innerHTML = renderPeople();
   else if (S.view === "progress") renderProgress();
+  else if (S.view === "tasting") renderTasting();
 }
 
 /* ---------------- 欄位可見性 ---------------- */
@@ -1618,6 +1628,328 @@ function pgGo(id, stage) {
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "center", inline: "center" });
 }
 
+/* =================== 試吃追蹤表 =================== */
+// 一位客人一列。追蹤日（試吃日 + 5 天）、提醒優惠（試吃日 + 27 天）不存資料庫，在這裡算。
+const TS_COLS = [
+  { f: "name", t: "姓名", kind: "text" },
+  { f: "phone", t: "電話", kind: "text" },
+  { f: "date", t: "試吃日", kind: "date" },
+  { f: "item", t: "試吃品項", kind: "menu", opts: ["單入", "燒菓子", "兩種", "喜餅"] },
+  { f: "pickup", t: "店取/宅配", kind: "menu", opts: ["店取", "宅配"] },
+  { f: "follow", t: "追蹤日", kind: "auto", after: 5, check: "tracked" },
+  { f: "tracked", t: "已追蹤", kind: "v" },
+  { f: "note1", t: "備註", kind: "note" },
+  { f: "promo", t: "提醒優惠", kind: "auto", after: 27, check: "reminded" },
+  { f: "reminded", t: "已提醒", kind: "v" },
+  { f: "note2", t: "備註", kind: "note" }
+];
+const TS = { rows: [], json: "", archive: false, grid: [], pos: {}, anchor: null, edit: null, dirty: false, click: null };
+const tsCol = f => TS_COLS.find(c => c.f === f);
+const tsRow = id => TS.rows.find(r => r.id === id);
+const tsKey = (id, f) => `t|${id}|${f}`;
+const tsText = f => ["text", "date", "note"].includes((tsCol(f) || {}).kind);
+function tsValue(r, f) {
+  const c = tsCol(f);
+  if (c.kind === "auto") return r.date ? pgAddDays(r.date, c.after) : null;
+  if (c.kind === "v") return r[f] ? "V" : null;
+  const v = r[f]; return v === undefined || v === "" ? null : v;
+}
+// 09 開頭的 10 位數手機號碼自動加橫線，其他照打的存
+function tsPhone(raw) { const s = raw.trim(); return /^09\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 7)}-${s.slice(7)}` : s; }
+function tsReminders() {
+  const out = [];
+  for (const r of TS.rows) {
+    if (r.archived || !r.date) continue;
+    for (const c of TS_COLS) if (c.kind === "auto" && pgAddDays(r.date, c.after) === S.today && !r[c.check]) out.push({ id: r.id, name: r.name, f: c.check, t: c.t });
+  }
+  return out;
+}
+function renderTasting() {
+  if (TS.edit) { TS.dirty = true; return; }
+  const rows = TS.rows.filter(r => !!r.archived === TS.archive);
+  const nArch = TS.rows.filter(r => r.archived).length;
+  const rem = TS.archive ? [] : tsReminders();
+  const grid = [];
+  let body = "";
+  rows.forEach(r => {
+    let tds = "";
+    TS_COLS.forEach(c => {
+      const v = tsValue(r, c.f), col = (r.colors || {})[c.f];
+      const cls = c.f === "name" ? "pg-name" : c.kind === "date" || c.kind === "auto" ? "pg-date" + (c.kind === "auto" ? " pg-auto" : "") + (c.kind === "auto" && v === S.today ? " pg-today" : "")
+        : c.kind === "v" ? "pg-mark" : c.kind === "note" ? "pg-note" : c.kind === "menu" ? "ts-menu" : "";
+      const text = c.kind === "date" || c.kind === "auto" ? pgMD(v) : esc(v || "");
+      tds += `<td data-pk="${esc(tsKey(r.id, c.f))}" class="${cls}" ${col ? `style="background:${colorHex(col)}"` : ""} ${v && (c.kind === "date" || c.kind === "auto") ? `title="${v}"` : ""}>${text}</td>`;
+    });
+    grid.push(TS_COLS.map(c => tsKey(r.id, c.f)));
+    body += `<tr class="ts-r" data-id="${r.id}">${tds}</tr>`;
+  });
+  if (!TS.archive) {
+    body += `<tr class="pg-new"><td data-pk="t|new|name" class="pg-name pg-newcell" title="打客人名字就會新增"></td><td colspan="${TS_COLS.length - 1}"></td></tr>`;
+    grid.push(["t|new|name"]);
+  }
+  TS.grid = grid; TS.pos = {};
+  grid.forEach((row, ri) => row.forEach((k, ci) => { if (!(k in TS.pos)) TS.pos[k] = [ri, ci]; }));
+  $("#view").innerHTML = `<div class="page pg-page">
+    <div class="pg-head"><h2>${TS.archive ? "試吃追蹤表：封存區" : "試吃追蹤表"}</h2>
+      <button class="btn ghost" type="button" data-a="ts-area">${TS.archive ? "回到試吃追蹤表" : `封存區（${nArch}）`}</button></div>
+    ${TS.archive ? `<p class="muted" style="margin:0 0 10px">這裡是已封存的客人（已追蹤、已提醒都打 V 的會自動移過來），可以直接編輯；選取後按上方的「取消封存」就會回到試吃追蹤表。</p>` :
+      `<div class="pg-remind"><b>今日提醒</b>${rem.length ? rem.map(x => `<button type="button" class="pg-chip" data-a="ts-go" data-id="${x.id}" data-f="${x.f}">${esc(x.name)}｜${esc(x.t)}</button>`).join("")
+        : `<span class="muted">今天沒有要處理的項目</span>`}</div>`}
+    <table class="pg-table ts-table"><thead><tr>${TS_COLS.map(c => `<th class="${c.f === "name" ? "pg-name" : ""}">${esc(c.t)}</th>`).join("")}</tr></thead>
+    <tbody>${body || `<tr><td colspan="${TS_COLS.length}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div>`;
+  if (S.cur && !cellOf(S.cur)) S.cur = null;
+  tsPaintSel(); paintCursor(); paintPresence(); tsPlaceEditor();
+}
+function tsSelIds() { return [...new Set([...S.cells].map(pgParse).map(p => p.id).filter(id => id !== "new"))]; }
+function tsTools() {
+  if (!canEdit()) return "";
+  const n = tsSelIds().length;
+  return `<span class="count">${n ? `已選 ${n} 位客人` : "點一格選取，Ctrl／Shift 可多選"}</span>
+    ${TS.archive ? `<button class="btn ghost" type="button" data-a="ts-unarchive" ${n ? "" : "disabled"}>取消封存</button>`
+      : `<button class="btn ghost" type="button" data-a="ts-archive" ${n ? "" : "disabled"}>封存</button>`}
+    <button class="btn ghost danger-text" type="button" data-a="ts-delete" ${n ? "" : "disabled"}>刪除</button>
+    <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>`;
+}
+function tsPaintSel() {
+  document.querySelectorAll(".ts-table td.csel").forEach(t => t.classList.remove("csel"));
+  if (S.cells.size > 1) S.cells.forEach(k => { const c = cellOf(k); if (c) c.classList.add("csel"); });
+  const ids = new Set(tsSelIds());
+  document.querySelectorAll(".ts-table tr[data-id]").forEach(tr => tr.classList.toggle("sel", ids.has(Number(tr.dataset.id))));
+  $("#tools").innerHTML = tsTools();
+}
+function tsRect(a, b) {
+  const pa = TS.pos[a], pb = TS.pos[b]; if (!pa || !pb) return [b];
+  const out = [];
+  for (let r = Math.min(pa[0], pb[0]); r <= Math.max(pa[0], pb[0]); r++)
+    for (let c = Math.min(pa[1], pb[1]); c <= Math.max(pa[1], pb[1]); c++) { const k = (TS.grid[r] || [])[c]; if (k && k !== "t|new|name") out.push(k); }
+  return out;
+}
+function tsSetCur(k) {
+  S.cur = k; paintCursor(); trackPresence(k);
+  const c = cellOf(k); if (c) c.scrollIntoView({ block: "nearest", inline: "nearest" });
+  tsPlaceEditor();
+}
+function tsMove(dir) {
+  const p = TS.pos[S.cur]; if (!p) return;
+  let [r, c] = p;
+  const [dr, dc] = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] }[dir];
+  r += dr; c += dc;
+  if (r < 0 || r >= TS.grid.length) return;
+  const row = TS.grid[r];
+  if (c < 0 || (dc && c >= row.length)) return;
+  const k = row[Math.min(c, row.length - 1)];
+  S.cells = new Set(k === "t|new|name" ? [] : [k]); TS.anchor = k; tsPaintSel(); tsSetCur(k);
+}
+
+/* ---------- 編輯框 ---------- */
+function tsEditorEl() {
+  let e = $("#ts-ed");
+  if (!e) {
+    e = document.createElement("input"); e.id = "ts-ed"; e.className = "editor armed"; e.type = "text"; e.autocomplete = "off"; e.hidden = true;
+    e.addEventListener("keydown", tsEdKey);
+    const begin = () => {
+      if (TS.edit || !S.cur) return;
+      const p = pgParse(S.cur);
+      if (!canEdit() || !tsText(p.f)) { e.value = ""; return; }
+      TS.edit = { key: S.cur, old: p.id === "new" ? null : tsValue(tsRow(p.id), p.f) };
+      e.classList.remove("armed"); trackPresence(S.cur);
+    };
+    e.addEventListener("input", begin);
+    e.addEventListener("compositionstart", begin);
+    e.addEventListener("blur", () => { if (TS.edit && !TS.edit.closing && !openModals.size) tsCommit(null); });
+    $("#scroll").appendChild(e);
+  }
+  return e;
+}
+function tsPlaceEditor() {
+  const e = tsEditorEl();
+  const k = TS.edit ? TS.edit.key : S.cur;
+  const c = S.view === "tasting" && k && cellOf(k);
+  if (!c) { e.hidden = true; return; }
+  const host = $("#scroll"), hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  e.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; e.style.top = (cr.top - hr.top + host.scrollTop) + "px";
+  e.style.width = Math.max(cr.width, TS.edit ? 110 : cr.width) + "px"; e.style.height = Math.min(cr.height, 30) + "px";
+  e.classList.toggle("armed", !TS.edit);
+  if (!TS.edit) e.value = "";
+  e.hidden = false;
+  if (document.activeElement !== e && !openModals.size && !$("#ts-menu")) e.focus({ preventScroll: true });
+}
+function tsStartEdit(k) {
+  const p = pgParse(k); if (!canEdit() || !tsText(p.f)) return;
+  const v = p.id === "new" ? null : tsValue(tsRow(p.id), p.f);
+  TS.edit = { key: k, old: v };
+  const e = tsEditorEl();
+  e.value = v === null ? "" : p.f === "date" ? `${Number(v.slice(5, 7))}/${Number(v.slice(8, 10))}` : v;
+  tsPlaceEditor(); e.focus(); e.select(); trackPresence(k);
+}
+// 選單格、V 格按下去要做的事
+function tsActivate(k) {
+  const p = pgParse(k); if (!canEdit() || p.id === "new") return;
+  const c = tsCol(p.f);
+  if (c.kind === "menu") return tsOpenMenu(k);
+  if (c.kind === "v") { const r = tsRow(p.id); if (r && !r[p.f]) tsSave(p.id, p.f, null, "V"); }
+}
+function tsEdKey(e) {
+  if (e.isComposing) return;
+  const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+  if (!TS.edit) {
+    if (!S.cur) return;
+    const p = pgParse(S.cur);
+    if (map[e.key]) { e.preventDefault(); return tsMove(map[e.key]); }
+    if (e.key === "Tab") { e.preventDefault(); return tsMove(e.shiftKey ? "left" : "right"); }
+    if (!canEdit()) { if (e.key.length === 1) e.preventDefault(); return; }
+    if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); return tsText(p.f) ? tsStartEdit(S.cur) : tsActivate(S.cur); }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); return tsClear(S.cur); }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !tsText(p.f)) { e.preventDefault(); tsActivate(S.cur); }
+    return;
+  }
+  if (e.key === "Enter") { e.preventDefault(); tsCommit("down"); }
+  else if (e.key === "Tab") { e.preventDefault(); tsCommit(e.shiftKey ? "left" : "right"); }
+  else if (e.key === "Escape") { e.preventDefault(); TS.edit = null; tsAfterEdit(); }
+}
+function tsAfterEdit() {
+  tsEditorEl().value = ""; trackPresence(S.cur);
+  if (TS.dirty) { TS.dirty = false; renderTasting(); } else tsPlaceEditor();
+}
+async function tsCommit(move) {
+  const ed = TS.edit; if (!ed || ed.closing) return;
+  ed.closing = true;
+  const raw = tsEditorEl().value;
+  const p = pgParse(ed.key);
+  let nv;
+  if (p.f === "date") {
+    const d = pgParseDate(raw);
+    if (d.err) { TS.edit = null; tsAfterEdit(); await alertBox(`看不懂「${raw.trim()}」這個日期。請打像「9/21」或「2027/1/5」這樣的格式。`); tsPlaceEditor(); return; }
+    nv = d.v;
+  } else if (p.f === "name") {
+    nv = raw.trim(); if (!nv) { TS.edit = null; tsAfterEdit(); return; }
+  } else if (p.f === "phone") nv = tsPhone(raw) || null;
+  else nv = raw.trim() || null;
+  TS.edit = null;
+  if (p.id === "new") {
+    try {
+      const id = await call("ship_tasting_create", { p_name: nv });
+      notify(); await refresh();
+      const k = tsKey(id, "phone"); S.cells = new Set([k]); TS.anchor = k; tsPaintSel(); tsSetCur(k);
+    } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); tsAfterEdit(); }
+    return;
+  }
+  if (nv !== ed.old) await tsSave(p.id, p.f, ed.old, nv);
+  tsAfterEdit();
+  if (move) tsMove(move);
+}
+async function tsSave(id, f, oldV, newV) {
+  const r = tsRow(id); if (!r) return;
+  if (tsCol(f).kind === "v") r[f] = newV === "V"; else r[f] = newV;
+  TS.json = ""; renderTasting();
+  const show = v => v === null || v === undefined || v === "" ? "空白" : f === "date" ? pgMD(v) : v;
+  try {
+    let res = await call("ship_tasting_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
+    if (res && res.conflict) {
+      const force = await modal({
+        title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
+        body: `<p>「${esc(r.name)}」的這一格剛被 <b>${esc(res.by || "別人")}</b> 改成 <b>${esc(show(res.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
+      });
+      if (force) res = await call("ship_tasting_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
+    }
+    if (res && res.archived) { if (S.cur && pgParse(S.cur).id === id) { S.cur = null; S.cells = new Set(); } toast(`「${r.name}」已追蹤、已提醒都完成，已移到封存區`); }
+    notify(); await refresh();
+  } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); TS.json = ""; await refresh(); }
+}
+async function tsClear(k) {
+  const p = pgParse(k); if (p.id === "new" || p.f === "name") return;
+  const c = tsCol(p.f); if (c.kind === "auto") return;
+  const r = tsRow(p.id); if (!r) return;
+  const old = tsValue(r, p.f); if (old === null) return;
+  await tsSave(p.id, p.f, old, null);
+}
+
+/* ---------- 選單（試吃品項、店取/宅配） ---------- */
+function tsCloseMenu() { const m = $("#ts-menu"); if (m) m.remove(); }
+function tsOpenMenu(k) {
+  tsCloseMenu();
+  const p = pgParse(k); const r = tsRow(p.id), col = tsCol(p.f), c = cellOf(k); if (!r || !c || col.kind !== "menu") return;
+  const cur = tsValue(r, p.f);
+  const m = document.createElement("div"); m.id = "ts-menu"; m.className = "menu";
+  m.innerHTML = col.opts.map(x => `<button type="button" data-v="${esc(x)}" ${x === cur ? `class="hl"` : ""}>${esc(x)}</button>`).join("") +
+    `<div class="hint" style="color:var(--soft)">要清除請按 Delete</div>`;
+  const host = $("#scroll"); host.appendChild(m);
+  const hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  m.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; m.style.top = (cr.bottom - hr.top + host.scrollTop + 2) + "px";
+  m.querySelectorAll("button").forEach(b => b.onclick = async () => {
+    tsCloseMenu(); trackPresence(S.cur);
+    if (b.dataset.v !== cur) await tsSave(r.id, p.f, cur, b.dataset.v);
+    tsPlaceEditor();
+  });
+  trackPresence(k);
+  (m.querySelector("button.hl") || m.querySelector("button")).focus();
+  m.addEventListener("keydown", e => {
+    const bs = [...m.querySelectorAll("button")]; const i = bs.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); (bs[i + 1] || bs[0]).focus(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); (bs[i - 1] || bs[bs.length - 1]).focus(); }
+    if (e.key === "Escape") { e.preventDefault(); tsCloseMenu(); trackPresence(S.cur); tsPlaceEditor(); }
+    e.stopPropagation();
+  });
+}
+
+/* ---------- 滑鼠 ---------- */
+document.addEventListener("mousedown", e => {
+  if (S.view !== "tasting" || !S.me || !S.me.role) return;
+  if (e.target.closest("#ts-menu")) return;
+  tsCloseMenu();
+  if (e.target.id === "ts-ed") return;
+  const td = e.target.closest && e.target.closest("td[data-pk]"); if (!td) return;
+  e.preventDefault();
+  if (TS.edit) tsCommit(null);
+  const k = td.dataset.pk, ctrl = e.ctrlKey || e.metaKey;
+  if (k === "t|new|name") { S.cells = new Set(); TS.anchor = null; }
+  else if (e.shiftKey && TS.anchor) S.cells = new Set([...(ctrl ? S.cells : []), ...tsRect(TS.anchor, k)]);
+  else if (ctrl) { S.cells.has(k) ? S.cells.delete(k) : S.cells.add(k); TS.anchor = k; }
+  else { S.cells = new Set([k]); TS.anchor = k; }
+  TS.click = !ctrl && !e.shiftKey ? k : null;
+  tsPaintSel(); tsSetCur(k);
+});
+document.addEventListener("mouseup", e => {
+  if (S.view !== "tasting") return;
+  const k = TS.click; TS.click = null; if (!k) return;
+  const td = e.target.closest && e.target.closest("td[data-pk]");
+  if (td && td.dataset.pk === k && !tsText(pgParse(k).f)) tsActivate(k);
+});
+document.addEventListener("dblclick", e => {
+  if (S.view !== "tasting") return;
+  const td = e.target.closest && e.target.closest("td[data-pk]"); if (td) tsStartEdit(td.dataset.pk);
+});
+
+/* ---------- 工具列動作 ---------- */
+async function tsArchive(v) {
+  const ids = tsSelIds(); if (!ids.length) return;
+  try { await call("ship_tasting_archive", { p_ids: ids, p_archived: v }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(v ? `已封存 ${ids.length} 位客人` : `已取消封存 ${ids.length} 位客人`); }
+  catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
+}
+async function tsDelete() {
+  const ids = tsSelIds(); if (!ids.length) return;
+  const names = ids.map(id => (tsRow(id) || {}).name).filter(Boolean).join("、");
+  if (!await confirmBox("刪除客人", `確定要刪除 ${names}？刪除後這些客人的資料就不見了，無法復原。`, "刪除", true)) return;
+  try { await call("ship_tasting_delete", { p_ids: ids }); S.cells = new Set(); S.cur = null; notify(); TS.json = ""; await refresh(); toast(`已刪除 ${ids.length} 位客人`); }
+  catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
+}
+async function tsApplyColor(color) {
+  const cells = [...S.cells].map(pgParse).filter(p => p.id !== "new" && tsRow(p.id));
+  if (!cells.length) return;
+  try { await call("ship_tasting_color", { p_cells: cells.map(p => ({ id: p.id, cell: p.f })), p_color: color }); TS.json = ""; notify(); await refresh(); }
+  catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); }
+}
+function tsArea() {
+  TS.archive = !TS.archive; S.cells = new Set(); S.cur = null; TS.anchor = null; trackPresence(null);
+  $("#scroll").scrollTo(0, 0); renderTasting();
+}
+function tsGo(id, f) {
+  if (TS.archive) { TS.archive = false; renderTasting(); }
+  const k = tsKey(id, f);
+  S.cells = new Set([k]); TS.anchor = k; tsPaintSel(); tsSetCur(k);
+  const c = cellOf(k); if (c) c.scrollIntoView({ block: "center", inline: "center" });
+}
+
 /* =================== 月統計 =================== */
 function renderStats() {
   const ym = S.month;
@@ -2217,7 +2549,8 @@ async function goView(v) {
   if (S.touched && await checkIncomplete()) return;
   if (S.edit) await commitEdit(null);
   if (PG.edit) await pgCommit(null);
-  S.view = v; S.cur = null; S.cells = new Set(); closeMenu(); pgCloseMenu(); trackPresence(null); pgPlaceEditor();
+  if (TS.edit) await tsCommit(null);
+  S.view = v; S.cur = null; S.cells = new Set(); closeMenu(); pgCloseMenu(); tsCloseMenu(); trackPresence(null); pgPlaceEditor(); tsPlaceEditor();
   $("#view").innerHTML = `<div class="page muted">載入中</div>`;
   $("#scroll").scrollTo(0, 0);
   renderNav(); renderBar();
@@ -2235,7 +2568,12 @@ document.addEventListener("click", e => {
   if (act === "st-packed") return setStatus("packed");
   if (act === "st-none") return setStatus("none");
   if (act === "move") return moveDate();
-  if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : applyColor);
+  if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : S.view === "tasting" ? tsApplyColor : applyColor);
+  if (act === "ts-archive") return tsArchive(true);
+  if (act === "ts-unarchive") return tsArchive(false);
+  if (act === "ts-delete") return tsDelete();
+  if (act === "ts-area") return tsArea();
+  if (act === "ts-go") return tsGo(Number(a.dataset.id), a.dataset.f);
   if (act === "pg-archive") return pgArchive(true);
   if (act === "pg-unarchive") return pgArchive(false);
   if (act === "pg-delete") return pgDelete();
