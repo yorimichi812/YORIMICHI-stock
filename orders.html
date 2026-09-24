@@ -97,7 +97,8 @@ table.t td,table.t th{border:1px dotted var(--grid);height:22px;padding:0 3px;wh
 table.t th{font-weight:500;font-size:11.5px;color:#4a514b;background:rgba(0,0,0,.025);text-align:center}
 table.t td.n{text-align:center;font-variant-numeric:tabular-nums}
 table.t td.nm{text-align:left;color:#5b2c8f}
-table.t td.kd,table.t td.cd,table.t td.tg{text-align:center}
+table.t td.kd,table.t td.cd,table.t td.tg,table.t td.lc{text-align:center}
+table.t td.lc{font-size:12px}
 table.t td.cd{font-size:11.5px}
 table.t td.tg{font-size:11.5px}
 table.t tr.tot td{border-top:2px solid var(--grid-strong);font-weight:700;background:rgba(0,0,0,.03);color:#333}
@@ -615,6 +616,7 @@ async function loadData(force) {
     }
     if (rev !== undefined) S.rev = rev;
     if (S.view === "logs" && force) await loadLogs(true);
+    if (S.view === "settings") { const si = await call("ship_stock_items").catch(() => null); if (si && JSON.stringify(si) !== JSON.stringify(S.stockItems)) { S.stockItems = si; changed = true; } }
     if (S.view === "people") { const p = await call("ship_people"); const j = JSON.stringify(p); if (j !== JSON.stringify(S.people) || force) { S.people = p; changed = true; } }
     S.syncOk = true; S.lastSync = new Date();
     if (changed) render();
@@ -646,8 +648,7 @@ function renderBar() {
   const tools = $("#tools");
   if (S.view === "sheet" && canEdit()) {
     const n = S.sel.size;
-    tools.innerHTML = `<span class="count">${n ? `已選 ${n} 筆` : "點一列選取，Ctrl／Shift 可多選"}</span>
-      <button class="btn ghost" type="button" data-a="st-dispatched" ${n ? "" : "disabled"}><span class="swatch-y"></span>已派單</button>
+    tools.innerHTML = `<span class="count">${n ? `已選 ${n} 筆` : "在「門市/工廠」欄選門市或工廠就是派單；點一列選取，Ctrl／Shift 可多選"}</span>
       <button class="btn ghost" type="button" data-a="st-packed" ${n ? "" : "disabled"}><span class="swatch-y"></span><span class="swatch-y" style="margin-left:-4px"></span>已包裝</button>
       <button class="btn ghost" type="button" data-a="st-none" ${n ? "" : "disabled"}>取消標示</button>
       <button class="btn ghost" type="button" data-a="move" ${n ? "" : "disabled"}>改日期</button>
@@ -681,11 +682,12 @@ const cardText = o => o.card_text ? o.card_text : o.card === true ? "○" : o.ca
 const tagName = id => { const t = S.cfg.tags.find(x => x.id === id); return t ? t.name : ""; };
 
 /* =================== 出貨表 =================== */
-const W = { kd: 38, nm: 128, it: 36, tg: 60, cd: 62, bx: 70 };
+const LOCN = { store: "門市", factory: "工廠" };
+const W = { kd: 38, lc: 44, nm: 128, it: 36, tg: 60, cd: 62, bx: 70 };
 function renderSheet() {
   const ym = S.month, n = daysIn(ym);
   const items = monthItems(ym), boxes = monthBoxes(ym);
-  const wW = W.kd + W.nm + items.length * W.it + W.tg + W.cd;
+  const wW = W.kd + W.lc + W.nm + items.length * W.it + W.tg + W.cd;
   const gW = W.nm + boxes.length * W.bx;
   const width = Math.max(wW, gW + 20);
   const byDay = {};
@@ -705,14 +707,15 @@ function renderSheet() {
       html += `<div class="day ${sun ? "sun" : ""}" style="width:${width + 6}px">
         <div class="dh">${Number(d.slice(5, 7))}月${Number(d.slice(8))}日（${WD[dow(d)]}）${sun ? "　只能店取" : ""}</div>`;
       // 白底段
-      html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.nm}px">${items.map(() => `<col style="width:${W.it}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
-        <tr><th>寄/取</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}"${i.header_color ? ` style="background:${colorHex(i.header_color)}"` : ""}>${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
+      html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.lc}px"><col style="width:${W.nm}px">${items.map(() => `<col style="width:${W.it}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
+        <tr><th>寄/取</th><th>門市/工廠</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}"${i.header_color ? ` style="background:${colorHex(i.header_color)}"` : ""}>${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
       for (const o of white) {
         const k = `w|${o.id}`;
         const packed = o.status === "packed";
         const cs = (f, yellow) => { const own = (o.colors || {})[`w|${f}`]; return own && (!yellow || o.color_keep === true) ? ` style="background:${colorHex(own)}"` : ""; };
         html += `<tr class="r ${o.status === "packed" ? "packed" : ""} ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="w">
           <td class="kd ${o.status !== "none" ? "y" : ""}" data-k="${k}|kind" data-d="${d}"${cs("kind", o.status !== "none")}>${esc(o.kind || "")}</td>
+          <td class="lc" data-k="${k}|loc" data-d="${d}"${cs("loc", packed)}>${esc(LOCN[o.loc] || "")}</td>
           <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
           ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}"${cs("c:" + i.id, packed)}>${fmt((o.contents || {})[i.id])}</td>`).join("")}
           <td class="tg" data-k="${k}|tag" data-d="${d}"${cs("tag", packed)}>${esc(tagName(o.tag_id))}</td>
@@ -720,12 +723,12 @@ function renderSheet() {
       }
       if (edit) {
         const k = `w|new:${d}`;
-        html += `<tr class="r new" data-o="new:${d}" data-d="${d}" data-s="w"><td data-k="${k}|kind" data-d="${d}"></td><td class="nm" data-k="${k}|name" data-d="${d}"></td>
+        html += `<tr class="r new" data-o="new:${d}" data-d="${d}" data-s="w"><td data-k="${k}|kind" data-d="${d}"></td><td data-k="${k}|loc" data-d="${d}"></td><td class="nm" data-k="${k}|name" data-d="${d}"></td>
           ${items.map(i => `<td data-k="${k}|c:${i.id}" data-d="${d}"></td>`).join("")}<td data-k="${k}|tag" data-d="${d}"></td><td data-k="${k}|card" data-d="${d}"></td><td></td></tr>`;
       }
-      for (let i = white.length + (edit ? 1 : 0); i < maxW; i++) html += `<tr class="fill"><td colspan="${items.length + 5}">&nbsp;</td></tr>`;
+      for (let i = white.length + (edit ? 1 : 0); i < maxW; i++) html += `<tr class="fill"><td colspan="${items.length + 6}">&nbsp;</td></tr>`;
       const sumC = items.map(i => list.reduce((a, o) => a + ((o.contents || {})[i.id] || 0), 0));
-      html += `<tr class="tot"><td></td><td>合計</td>${sumC.map(v => `<td class="n">${fmt(v)}</td>`).join("")}<td></td><td></td><td></td></tr></table>`;
+      html += `<tr class="tot"><td></td><td></td><td>合計</td>${sumC.map(v => `<td class="n">${fmt(v)}</td>`).join("")}<td></td><td></td><td></td></tr></table>`;
       // 綠底段
       html += `<div class="gsec"><table class="t" style="width:${width}px"><colgroup><col style="width:${W.nm}px">${boxes.map(() => `<col style="width:${W.bx}px">`).join("")}<col></colgroup>
         <tr><th>客人</th>${boxes.map(b => `<th title="${esc(b.name)}">${esc(b.name)}</th>`).join("")}<th></th></tr>`;
@@ -784,6 +787,7 @@ function orderValue(o, f) {
   if (!o) return null;
   if (f === "name") return o.name;
   if (f === "kind") return o.kind || null;
+  if (f === "loc") return o.loc || null;
   if (f === "card") return o.card_text ? o.card_text : (o.card === true || o.card === false) ? o.card : null;
   if (f === "tag") return o.tag_id || null;
   if (f.startsWith("c:")) return (o.contents || {})[f.slice(2)] || null;
@@ -1002,14 +1006,15 @@ async function saveField(id, f, oldV, newV, date) {
   const o = orderOf(id); if (!o) return false;
   applyLocal(o, f, newV); render();
   try {
-    let r = await call("ship_order_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
+    const fn = f === "loc" ? "ship_order_loc" : "ship_order_set";
+    let r = await call(fn, { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
     if (r && r.conflict) {
-      const show = v => f === "card" ? (v === true ? "○" : v === false ? "✕" : v ? v : "空白") : f === "tag" ? (tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
+      const show = v => f === "loc" ? (LOCN[v] || "空白") : f === "card" ? (v === true ? "○" : v === false ? "✕" : v ? v : "空白") : f === "tag" ? (tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
       const force = await modal({
         title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
         body: `<p>「${esc(o.name)}」的這一格剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(show(r.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
       });
-      if (force) r = await call("ship_order_set", { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
+      if (force) r = await call(fn, { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: true });
     }
     S.touched = id;
     notify(); await refresh();
@@ -1022,6 +1027,7 @@ async function saveField(id, f, oldV, newV, date) {
 }
 function applyLocal(o, f, v) {
   if (f === "name") o.name = v; else if (f === "kind") o.kind = v;
+  else if (f === "loc") { o.loc = v; o.status = v ? (o.status === "none" ? "dispatched" : o.status) : "none"; }
   else if (f === "card") { if (typeof v === "string") { o.card_text = v; o.card = null; } else { o.card = v; o.card_text = null; } }
   else if (f === "tag") o.tag_id = v;
   else if (f.startsWith("c:")) { o.contents = { ...o.contents }; if (v) o.contents[f.slice(2)] = v; else delete o.contents[f.slice(2)]; }
@@ -1036,6 +1042,10 @@ async function clearCell(k) {
   if (p.f === "name") return saveName(p, { old: o.name, key: k }, "");
   const old = orderValue(o, p.f);
   if (old === null) return;
+  if (p.f === "loc") {
+    const msg = o.status === "packed" ? "這筆已包裝，確定要一起取消派單嗎？撥調系統也會同步刪除哦！" : "確定要取消派單嗎？撥調系統也會同步刪除哦！";
+    if (!await confirmBox("取消派單", `「${o.name}」${msg}`, "取消派單", true)) return;
+  }
   await saveField(o.id, p.f, old, null, o.ship_date);
 }
 
@@ -1071,7 +1081,8 @@ function openMenu(k) {
   if (p.f === "kind") {
     const sun = dow(o.ship_date) === 0;
     opts = [{ v: "寄", t: "寄出", dis: sun }, { v: "取", t: "店取" }, { v: null, t: "清除" }];
-  } else if (p.f === "card") opts = [{ v: true, t: "○　有小卡" }, { v: false, t: "✕　沒有小卡" }, { v: "__text__", t: "自己輸入…" }, { v: null, t: "清除" }];
+  } else if (p.f === "loc") opts = [{ v: "store", t: "門市" }, { v: "factory", t: "工廠" }];
+  else if (p.f === "card") opts = [{ v: true, t: "○　有小卡" }, { v: false, t: "✕　沒有小卡" }, { v: "__text__", t: "自己輸入…" }, { v: null, t: "清除" }];
   else if (p.f === "tag") {
     opts = S.cfg.tags.filter(t => !t.hidden || t.id === o.tag_id).map(t => ({ v: t.id, t: t.name }));
     opts.push({ v: null, t: "空白" });
@@ -1079,6 +1090,7 @@ function openMenu(k) {
   const m = document.createElement("div"); m.id = "menu"; m.className = "menu";
   m.innerHTML = opts.map((x, i) => `<button type="button" data-i="${i}" ${x.dis ? "disabled" : ""}>${esc(x.t)}</button>`).join("") +
     (p.f === "kind" && dow(o.ship_date) === 0 ? `<div class="hint">星期日不能寄出</div>` : "") +
+    (p.f === "loc" ? `<div class="hint" style="color:var(--soft)">選了就是已派單；要取消派單請按 Delete</div>` : "") +
     (p.f === "tag" && !S.cfg.tags.length ? `<div class="hint" style="color:var(--soft)">到「設定」新增吊牌選項</div>` : "");
   const host = $("#scroll"); host.appendChild(m);
   const hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
@@ -1155,7 +1167,7 @@ async function setStatus(st) {
       catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); return; }
     }
   }
-  try { await call("ship_order_status", { p_ids: ids, p_status: st }); notify(); await refresh(); toast(st === "none" ? "已取消標示" : st === "packed" ? "已標示已包裝" : "已標示已派單"); }
+  try { await call("ship_order_status", { p_ids: ids, p_status: st }); notify(); await refresh(); toast(st === "none" ? "已取消標示（退回已派單）" : "已標示已包裝"); }
   catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
 }
 async function moveDate() {
@@ -1247,11 +1259,11 @@ document.addEventListener("mousemove", e => {
 document.addEventListener("mouseup", () => {
   const d = S.drag; S.drag = null; if (!d || d.moved || d.mod) return;
   const p = parseKey(d.start);
-  if (canEdit() && ["kind", "card", "tag"].includes(p.f) && !p.isNew && S.cur === d.start) openMenu(d.start);
+  if (canEdit() && ["kind", "loc", "card", "tag"].includes(p.f) && !p.isNew && S.cur === d.start) openMenu(d.start);
 });
 document.addEventListener("dblclick", e => {
   const td = e.target.closest && e.target.closest("td[data-k]"); if (!td) return;
-  if (["kind", "card", "tag"].includes(parseKey(td.dataset.k).f)) return;
+  if (["kind", "loc", "card", "tag"].includes(parseKey(td.dataset.k).f)) return;
   startEdit(S.cur || td.dataset.k);
 });
 document.addEventListener("keydown", e => {
@@ -1266,7 +1278,7 @@ document.addEventListener("keydown", e => {
   const p = parseKey(S.cur);
   if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); startEdit(S.cur); return; }
   if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); clearCell(S.cur); return; }
-  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && ["kind", "card", "tag"].includes(p.f)) { e.preventDefault(); openMenu(S.cur); }
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && ["kind", "loc", "card", "tag"].includes(p.f)) { e.preventDefault(); openMenu(S.cur); }
 });
 /* =================== 進程表 =================== */
 // 每位客人上下兩列：上面日期、下面符號。自動日期（依希望到貨日往前推）不存資料庫，在這裡算。
@@ -2105,8 +2117,8 @@ function renderSettings() {
   return `<div class="page">
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
-    ${items.length ? `<table class="plain items"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th></th></tr>
-      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
+    ${items.length ? `<table class="plain items"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th>撥調系統使用名稱</th><th></th></tr>
+      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${x.stock_item_id ? esc(stockItemName(x.stock_item_id)) : `<span class="muted">—</span>`}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
     <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
     ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th><th></th></tr>
       ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td><td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
@@ -2147,13 +2159,16 @@ async function editSetting(kind, id) {
       : `<div class="field"><label class="lbl" for="s-name">名稱</label><input type="text" id="s-name" maxlength="40" value="${esc(x ? x.name : "")}" style="width:100%"></div>`}
     ${kind === "item" ? `<div class="field"><span class="lbl">代號底色（出貨表表頭）</span>${swatchPicker("s-hc", x && x.header_color)}</div>` : ""}
     ${kind === "item" ? `<label style="display:flex;align-items:center;gap:6px;margin:-2px 0 12px;font-size:13.5px"><input type="checkbox" id="s-nostock" ${x && x.no_stock ? "checked" : ""}>不計算庫存（不會出現在庫存表，例如不自己做的馬卡龍）</label>` : ""}
+    ${kind === "item" ? `<div class="field"><label class="lbl" for="s-stock">撥調系統使用名稱</label><select id="s-stock" style="width:100%"><option value="">（不對應，派單時不帶到撥調）</option>
+      ${(S.stockItems || []).filter(s => s.active || (x && x.stock_item_id === s.id)).map(s => `<option value="${esc(s.id)}" ${x && x.stock_item_id === s.id ? "selected" : ""}>${esc(s.name)}${s.unit ? `（${esc(s.unit)}）` : ""}</option>`).join("")}</select>
+      <p class="muted" style="font-size:12px;margin:4px 0 0">派單時，這個代號的數量會照搬到撥調的這個品項（單位要一樣）。</p></div>` : ""}
     ${kind === "item" || kind === "pack" ? `<div class="row2 field"><div><label class="lbl" for="s-unit">單位</label><input type="text" id="s-unit" maxlength="10" placeholder="條、盤、袋、個" value="${esc(x ? x.unit : "")}" style="width:100%"></div>
       <div id="s-safety-wrap" ${x && x.no_stock ? "hidden" : ""}><label class="lbl" for="s-safety">安全庫存量</label><input type="number" id="s-safety" min="0" step="1" value="${x ? x.safety : 0}" style="width:100%"></div></div>` : ""}
     ${hasMonths ? `<div class="field"><span class="lbl">出現在哪些月份</span>
       <div class="radios"><label><input type="radio" name="s-mm" value="all" ${!x || !x.months ? "checked" : ""}>所有月份</label>
       <label><input type="radio" name="s-mm" value="some" ${x && x.months ? "checked" : ""}>只在選定的月份</label></div>
       <div class="mgrid" id="s-months" ${!x || !x.months ? "hidden" : ""}>${monthPicker(x && x.months)}</div></div>` : ""}`;
-  await modal({
+  const res = await modal({
     title: (x ? "編輯" : "新增") + title, ok: x ? "儲存" : "新增", body, wide: hasMonths,
     onOpen: w => {
       w.querySelectorAll('input[name="s-mm"]').forEach(r => r.onchange = () => { $("#s-months", w).hidden = $('input[name="s-mm"]:checked', w).value === "all"; });
@@ -2162,7 +2177,7 @@ async function editSetting(kind, id) {
     onOk: async ({ root, setErr }) => {
       const data = { name: $("#s-name", root).value.trim() };
       if (!data.name) { setErr("請輸入名稱。"); return false; }
-      if (kind === "item") { data.code = $("#s-code", root).value.trim(); if (!data.code) { setErr("請輸入代號。"); return false; } data.no_stock = $("#s-nostock", root).checked; data.header_color = ($('input[name="s-hc"]:checked', root) || {}).value || null; }
+      if (kind === "item") { data.code = $("#s-code", root).value.trim(); if (!data.code) { setErr("請輸入代號。"); return false; } data.no_stock = $("#s-nostock", root).checked; data.header_color = ($('input[name="s-hc"]:checked', root) || {}).value || null; data.stock_item_id = $("#s-stock", root).value || null; }
       if (kind === "item" || kind === "pack") {
         data.unit = $("#s-unit", root).value.trim();
         const s = $("#s-safety", root).value.trim(); if (s !== "" && !/^\d+$/.test(s)) { setErr("安全庫存量要是 0 以上的整數。"); return false; }
@@ -2177,9 +2192,26 @@ async function editSetting(kind, id) {
       try { await call("ship_setting_save", { p_kind: kind, p_id: x ? x.id : null, p_data: data }); }
       catch (e) { if (!(e instanceof Handled)) setErr(e.message); return false; }
       notify(); await refresh();
+      return { changedStock: kind === "item" && x && (x.stock_item_id || null) !== (data.stock_item_id || null) ? x.id : null };
     }
   });
+  if (res && res.changedStock) await askResync(res.changedStock);
 }
+// 改了代號的撥調對應後，問要怎麼更新已派單的訂單
+async function askResync(itemId) {
+  const it = S.cfg.items.find(i => i.id === itemId);
+  const pick = await modal({
+    title: "要更新已派單的訂單嗎？", ok: "只更新今天以後的", cancel: "都不動",
+    body: `<p>「${esc(it ? it.code : "")}」的撥調系統使用名稱改了。已經派單的訂單，撥調那邊要跟著更新嗎？</p>
+      <p class="muted" style="font-size:13px">只更新今天以後的：出貨日期是今天或之後的已派單訂單。<br>全部更新：包括過去已經出貨的。<br>都不動：只影響之後新派單或修改的訂單。</p>`,
+    extra: [{ label: "全部更新", value: "all" }]
+  });
+  if (!pick) return;
+  const scope = pick === "all" ? "all" : "future";
+  try { const n = await call("ship_stock_resync", { p_item: itemId, p_scope: scope }); notify(); await refresh(); toast(`已重新同步 ${n} 筆訂單`); }
+  catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
+}
+const stockItemName = id => { const s = (S.stockItems || []).find(v => v.id === id); return s ? s.name : "（撥調品項已刪除）"; };
 async function editBom(boxId, kind = "box") {
   const src = kind === "item" ? S.cfg.items.find(b => b.id === boxId) : S.cfg.boxes.find(b => b.id === boxId);
   if (!src) return;
@@ -2678,7 +2710,6 @@ document.addEventListener("click", e => {
   const act = a.dataset.a;
   if (act === "logout") return logout();
   if (act.startsWith("pp-")) return peopleAction(act, a);
-  if (act === "st-dispatched") return setStatus("dispatched");
   if (act === "st-packed") return setStatus("packed");
   if (act === "st-none") return setStatus("none");
   if (act === "move") return moveDate();

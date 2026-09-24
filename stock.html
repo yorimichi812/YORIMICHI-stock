@@ -725,6 +725,7 @@ async function fetchAll() {
       editedBy: o.edited_by_name,
       editedAt: tsOf(o.edited_at),
       boxLabel: o.box_label,
+      shipOrderId: o.ship_order_id || null,
       lines: (o.order_lines || []).map(l => ({
         id: l.id,
         itemId: l.item_id,
@@ -1580,13 +1581,15 @@ function OrdersPage({
       className: "l faint"
     }, o.editedBy ? o.editedBy + "（改）" : o.createdBy || "—"), /*#__PURE__*/React.createElement("td", {
       className: "oacts"
-    }, /*#__PURE__*/React.createElement("button", {
+    }, o.shipOrderId ? /*#__PURE__*/React.createElement("span", {
+      className: "sub"
+    }, "由出貨表建立，請到出貨表修改") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       className: "btn ghost mini",
       onClick: () => setEditing(o)
     }, "修改"), " ", /*#__PURE__*/React.createElement("button", {
       className: "btn danger mini",
       onClick: () => remove(o)
-    }, "刪除")));
+    }, "刪除"))));
   }))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
     db: db,
     me: me,
