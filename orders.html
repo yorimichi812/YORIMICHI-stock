@@ -225,6 +225,9 @@ table.plain.items .ops{flex-wrap:nowrap}
 .pg-table td.pg-note{min-width:160px;max-width:360px;white-space:normal}
 .pg-table tr.sel td{box-shadow:inset 0 0 0 999px rgba(47,111,208,.08)}
 .pg-table td.pg-newcell{background:#fbfaf6;height:30px}
+.pp-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;background:#fff;border:1px solid var(--rule);border-radius:10px;padding:12px 14px;margin-bottom:6px}
+.pp-handout{background:var(--green-soft);border-radius:9px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.7}
+.pp-handout b{display:block;font-size:14.5px}
 .ts-table tr.ts-r td{border-bottom:1px solid var(--grid)}
 .ts-table td.ts-menu{text-align:center}
 
@@ -2535,17 +2538,104 @@ document.addEventListener("change", e => {
   if (e.target.id === "lf-actor") { f.actor = e.target.value; loadLogs(true).catch(() => {}); }
   if (e.target.id === "jump" && e.target.value) goMonth(e.target.value);
   if (e.target.dataset && e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value, e.target);
+  if (e.target.dataset && e.target.dataset.appFor) setAppRole(e.target.dataset.appFor, e.target.value);
 });
 
 /* =================== 人員 =================== */
+const SHIP_ROLES = [["", "不開通"], ["admin", "管理者"], ["cs", "客服"], ["packer", "包裝部"], ["kitchen", "內場"]];
+const APP_ROLES = [["staff", "一般"], ["admin", "管理者"]];
 function renderPeople() {
+  const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${(cur || "") === v ? "selected" : ""}>${t}</option>`).join("");
+  const ho = S.handout;
   return `<div class="page"><h2>人員</h2>
-    <p class="muted">帳號在「門市/工廠撥調」新增，這裡只設定每個人在出貨表的角色。<br>
-    管理者：全部功能＋設定角色　客服：KEY 單、標示狀態、設定、製作進貨　包裝部：只能看出貨表和庫存表　內場：只能看庫存表</p>
-    <table class="plain"><tr><th>姓名</th><th>出貨表角色</th></tr>
-    ${S.people.map(p => `<tr><td>${esc(p.name)}${p.id === S.me.id ? `<span class="muted" style="font-size:12px;margin-left:6px">你</span>` : ""}</td>
-      <td><select data-role-for="${p.id}">${[["", "未開通"], ["admin", "管理者"], ["cs", "客服"], ["packer", "包裝部"], ["kitchen", "內場"]]
-        .map(([v, t]) => `<option value="${v}" ${(p.role || "") === v ? "selected" : ""}>${t}</option>`).join("")}</select></td></tr>`).join("")}</table></div>`;
+    <p class="muted">帳號跟「門市/工廠撥調」共用，這裡新增、改名、重設密碼、停用或刪除，撥調那邊也會一起生效。<br>
+    出貨表角色　管理者：全部功能＋管理人員　客服：KEY 單、標示狀態、設定、製作進貨、進程表、試吃追蹤表　包裝部：只能看出貨表和庫存表　內場：只能看庫存表</p>
+    <h3>新增人員</h3>
+    ${ho ? `<div class="pp-handout"><b>已建立 ${esc(ho.name)}，臨時密碼：${esc(ho.pin)}</b>請把這組密碼告訴本人。他第一次登入後，系統會要求他自己設一組新的。
+      <button class="btn link" type="button" data-a="pp-handout-close">知道了</button></div>` : ""}
+    <div class="pp-add">
+      <div><label class="lbl" for="np-name">姓名</label><input type="text" id="np-name" maxlength="20"></div>
+      <div><label class="lbl" for="np-pin">臨時密碼（至少 4 碼）</label><input type="text" id="np-pin" maxlength="20" autocomplete="off"></div>
+      <div><label class="lbl" for="np-app">撥調身分</label><select id="np-app">${opts(APP_ROLES, "staff")}</select></div>
+      <div><label class="lbl" for="np-ship">出貨表角色</label><select id="np-ship">${opts(SHIP_ROLES, "")}</select></div>
+      <button class="btn primary" type="button" data-a="pp-add">新增</button>
+    </div>
+    <h3>人員名單</h3>
+    <table class="plain"><tr><th>姓名</th><th>撥調身分</th><th>出貨表角色</th><th>狀態</th><th></th></tr>
+    ${S.people.map(p => { const me = p.id === S.me.id; return `<tr class="${p.active ? "" : "off"}">
+      <td style="white-space:nowrap">${esc(p.name)}${me ? `<span class="muted" style="font-size:12px;margin-left:6px">你</span>` : ""}</td>
+      <td><select data-app-for="${p.id}">${opts(APP_ROLES, p.app_role)}</select></td>
+      <td><select data-role-for="${p.id}">${opts(SHIP_ROLES, p.role)}</select></td>
+      <td style="white-space:nowrap">${p.active ? "啟用中" : `<span class="tag-off">已停用</span>`}</td>
+      <td style="white-space:nowrap"><button class="btn link" type="button" data-a="pp-rename" data-id="${p.id}">改姓名</button>
+        <button class="btn link" type="button" data-a="pp-pin" data-id="${p.id}">重設密碼</button>
+        ${me ? "" : `<button class="btn link" type="button" data-a="pp-toggle" data-id="${p.id}">${p.active ? "停用" : "啟用"}</button>
+        <button class="btn link danger-text" type="button" data-a="pp-del" data-id="${p.id}">刪除</button>`}</td></tr>`; }).join("")}</table></div>`;
+}
+const personOf = id => S.people.find(p => p.id === id);
+const shipRoleName = r => (SHIP_ROLES.find(x => x[0] === (r || "")) || [, "不開通"])[1];
+const appRoleName = r => (APP_ROLES.find(x => x[0] === r) || [, r])[1];
+async function reloadPeople() { S.people = await call("ship_people").catch(() => S.people); render(); }
+async function peopleLog(detail) { try { await call("ship_people_log", { p_detail: detail }); } catch (e) {} }
+// 直接改 app_users（跟撥調系統一樣）。沒有權限時資料庫不會報錯、只是改不到，所以要檢查有沒有真的改到
+async function updateAppUser(id, patch) {
+  const r = await sb.from("app_users").update(patch).eq("id", id).select("id");
+  if (r.error) throw new Error(friendly(r.error.message));
+  if (!r.data || !r.data.length) throw new Error("改不了。只有同時是「門市/工廠撥調」管理者的人才能做這個動作。");
+}
+async function rpcOrThrow(fn, args) {
+  const r = await sb.rpc(fn, args);
+  if (r.error) throw new Error(friendly(r.error.message));
+  return r.data;
+}
+function promptBox(title, label, value = "", hint = "") {
+  return modal({
+    title, ok: "確定",
+    body: `<div class="field"><label class="lbl" for="pb-in">${esc(label)}</label><input type="text" id="pb-in" maxlength="20" value="${esc(value)}" style="width:100%" autocomplete="off"></div>${hint ? `<p class="muted" style="font-size:12.5px">${esc(hint)}</p>` : ""}`,
+    onOpen: root => { const i = $("#pb-in", root); i.focus(); i.select(); },
+    onOk: ({ root }) => $("#pb-in", root).value.trim()
+  });
+}
+async function peopleAction(act, btn) {
+  try {
+    if (act === "pp-handout-close") { S.handout = null; return render(); }
+    if (act === "pp-add") {
+      const name = $("#np-name").value.trim(), pin = $("#np-pin").value, app = $("#np-app").value, ship = $("#np-ship").value;
+      if (!name) return alertBox("請填姓名。");
+      if (pin.length < 4) return alertBox("臨時密碼至少 4 碼。");
+      btn.disabled = true;
+      const id = await rpcOrThrow("create_staff", { p_name: name, p_pin: pin, p_role: app });
+      if (ship) await call("ship_role_set", { p_user: id, p_role: ship });
+      await peopleLog(`新增人員「${name}」（撥調：${appRoleName(app)}，出貨表：${shipRoleName(ship)}）`);
+      S.handout = { name, pin }; notify(); return reloadPeople();
+    }
+    const p = personOf(btn.dataset.id); if (!p) return;
+    if (act === "pp-rename") {
+      const nv = await promptBox(`改 ${p.name} 的姓名`, "姓名", p.name); if (!nv || nv === p.name) return;
+      await updateAppUser(p.id, { name: nv });
+      await peopleLog(`改姓名：${p.name} → ${nv}`); toast("已改姓名");
+    } else if (act === "pp-pin") {
+      const np = await promptBox(`重設 ${p.name} 的密碼`, "臨時密碼（至少 4 碼）", "", "他下次登入時，系統會要求他自己再設一組新的。"); if (!np) return;
+      if (np.length < 4) return alertBox("臨時密碼至少 4 碼。");
+      await rpcOrThrow("set_staff_pin", { p_user: p.id, p_pin: np });
+      await peopleLog(`重設「${p.name}」的密碼`);
+      await alertBox(`${p.name} 的臨時密碼是：${np}。請轉告本人，他下次登入時要自己再設一組新的。`, "已重設密碼");
+    } else if (act === "pp-toggle") {
+      await updateAppUser(p.id, { active: !p.active });
+      await peopleLog(`${p.active ? "停用" : "啟用"}「${p.name}」`); toast(p.active ? `已停用 ${p.name}` : `已啟用 ${p.name}`);
+    } else if (act === "pp-del") {
+      if (!await confirmBox("刪除人員", `確定要刪除 ${p.name}？他就再也不能登入出貨表和撥調系統了。他之前做過的紀錄會保留，上面的名字也還在。`, "刪除", true)) return;
+      await rpcOrThrow("delete_staff", { p_user: p.id });
+      await peopleLog(`刪除人員「${p.name}」`); toast(`已刪除 ${p.name}`);
+    }
+    notify(); await reloadPeople();
+  } catch (e) { if (btn) btn.disabled = false; if (!(e instanceof Handled)) await alertBox(e.message); await reloadPeople(); }
+}
+async function setAppRole(uid, r) {
+  const p = personOf(uid); if (!p) return;
+  try { await updateAppUser(uid, { role: r }); await peopleLog(`改撥調身分：${p.name} ${appRoleName(p.app_role)} → ${appRoleName(r)}`); toast("撥調身分已更新"); notify(); }
+  catch (e) { await alertBox(e.message); }
+  await reloadPeople();
 }
 async function setRole(uid, r, el) {
   try { await call("ship_role_set", { p_user: uid, p_role: r || null }); toast("角色已更新"); notify(); if (uid === S.me.id) return boot(); await refresh(); }
@@ -2580,6 +2670,7 @@ document.addEventListener("click", e => {
   const a = e.target.closest("[data-a]"); if (!a) return;
   const act = a.dataset.a;
   if (act === "logout") return logout();
+  if (act.startsWith("pp-")) return peopleAction(act, a);
   if (act === "st-dispatched") return setStatus("dispatched");
   if (act === "st-packed") return setStatus("packed");
   if (act === "st-none") return setStatus("none");
