@@ -705,6 +705,19 @@ const cardText = o => o.card_text ? o.card_text : o.card === true ? "○" : o.ca
 const tagName = id => { const t = S.cfg.tags.find(x => x.id === id); return t ? t.name : ""; };
 
 /* =================== 出貨表 =================== */
+// 綠色區的名字：只看括號前面；沒有名字的（外場、試吃）顯示寄/取的內容
+const greenName = o => { const b = String(o.name || "").split(/[(（]/)[0].trim(); return b || o.kind || ""; };
+// 綠色區要顯示的列：同一天、括號前同名的只顯示第一筆；其他同名的有填盒數才顯示
+function greenRows(list) {
+  const sorted = [...list].sort((a, b) => a.sort_green - b.sort_green || a.id - b.id);
+  const seen = new Set();
+  return sorted.filter(o => {
+    const key = greenName(o);
+    const hasBox = Object.values(o.boxes || {}).some(v => Number(v) > 0);
+    if (!seen.has(key)) { seen.add(key); return true; }
+    return hasBox;
+  });
+}
 const LOCN = { store: "門市", factory: "工廠" };
 const W = { kd: 38, lc: 44, nm: 128, it: 36, tg: 60, cd: 62, bx: 70 };
 function renderSheet() {
@@ -720,12 +733,12 @@ function renderSheet() {
   for (let start = 1; start <= n; start += 7) {
     const days = []; for (let d = start; d < start + 7 && d <= n; d++) days.push(dstr(ym, d));
     const maxW = Math.max(...days.map(d => (byDay[d] || []).length)) + (edit ? 1 : 0);
-    const maxG = Math.max(1, ...days.map(d => (byDay[d] || []).length));
+    const maxG = Math.max(1, ...days.map(d => greenRows(byDay[d] || []).length));
     html += `<div class="week">`;
     for (const d of days) {
       const list = byDay[d] || [];
       const white = [...list].sort((a, b) => a.sort_white - b.sort_white || a.id - b.id);
-      const green = [...list].sort((a, b) => a.sort_green - b.sort_green || a.id - b.id);
+      const green = greenRows(list);
       const sun = dow(d) === 0;
       html += `<div class="day ${sun ? "sun" : ""}" style="width:${width + 6}px">
         <div class="dh">${Number(d.slice(5, 7))}月${Number(d.slice(8))}日（${WD[dow(d)]}）${sun ? "　只能店取" : ""}</div>`;
@@ -741,7 +754,7 @@ function renderSheet() {
           <td class="lc" data-k="${k}|loc" data-d="${d}"${cs("loc", packed)}>${esc(LOCN[o.loc] || "")}</td>
           <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
           ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}"${cs("c:" + i.id, packed)}>${fmt((o.contents || {})[i.id])}</td>`).join("")}
-          <td class="tg" data-k="${k}|tag" data-d="${d}"${cs("tag", packed)}>${esc(tagName(o.tag_id))}</td>
+          <td class="tg" data-k="${k}|tag" data-d="${d}"${cs("tag", packed)}>${esc(o.tag_text || tagName(o.tag_id))}</td>
           <td class="cd" data-k="${k}|card" data-d="${d}" title="${esc(cardText(o))}"${cs("card", packed)}>${esc(cardText(o))}</td><td></td></tr>`;
       }
       if (edit) {
@@ -759,7 +772,7 @@ function renderSheet() {
         const k = `g|${o.id}`;
         const cs = f => { const own = (o.colors || {})[`g|${f}`]; return own ? ` style="background:${colorHex(own)}"` : ""; };
         html += `<tr class="r ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="g">
-          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name")}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
+          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name")}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(greenName(o))}</td>
           ${boxes.map(b => `<td class="n" data-k="${k}|b:${b.id}" data-d="${d}"${cs("b:" + b.id)}>${fmt((o.boxes || {})[b.id])}</td>`).join("")}<td></td></tr>`;
       }
       for (let i = green.length; i < maxG; i++) html += `<tr class="fill"><td colspan="${boxes.length + 2}">&nbsp;</td></tr>`;
@@ -812,7 +825,7 @@ function orderValue(o, f) {
   if (f === "kind") return o.kind || null;
   if (f === "loc") return o.loc || null;
   if (f === "card") return o.card_text ? o.card_text : (o.card === true || o.card === false) ? o.card : null;
-  if (f === "tag") return o.tag_id || null;
+  if (f === "tag") return o.tag_text || o.tag_id || null;
   if (f.startsWith("c:")) return (o.contents || {})[f.slice(2)] || null;
   if (f.startsWith("b:")) return (o.boxes || {})[f.slice(2)] || null;
   return null;
@@ -943,13 +956,13 @@ function startEdit(k, cardText) {
   const p = parseKey(k);
   if (p.s !== "st") {
     if (p.isNew && p.f !== "name") return setCur(k.replace(/\|[^|]+$/, "|name"));
-    if (["kind", "card", "tag"].includes(p.f) && !(p.f === "card" && cardText)) return openMenu(k);
+    if (["kind", "loc", "card", "tag"].includes(p.f) && !((p.f === "card" || p.f === "tag") && cardText)) return openMenu(k);
   }
   const c = cellOf(k); if (!c) return;
   const old = editValue(k);
   S.edit = { key: k, old, date: c.dataset.d }; S.armed = null;
   const e = editorEl();
-  e.value = old === null || old === undefined || typeof old === "boolean" ? "" : String(old);
+  e.value = old === null || old === undefined || typeof old === "boolean" ? "" : p.f === "tag" && typeof old === "number" ? tagName(old) : String(old);
   placeEditor(); e.select();
   trackPresence(k);
 }
@@ -985,6 +998,14 @@ async function commitEdit(move) {
   let ok = true;
   if (p.s === "st") ok = await saveStock(p, ed, raw);
   else if (p.f === "name") ok = await saveName(p, ed, raw);
+  else if (p.f === "tag") {
+    if (raw.length > 20) { await alertBox("吊牌的內容最多 20 個字。"); ok = false; }
+    else {
+      const hit = S.cfg.tags.find(t => t.name === raw);
+      const nv = raw === "" ? null : hit ? hit.id : raw;
+      if (nv !== ed.old) ok = await saveField(p.o, "tag", ed.old, nv, ed.date);
+    }
+  }
   else if (p.f === "card") {
     if (raw.length > 20) { await alertBox("小卡的內容最多 20 個字。"); ok = false; }
     else {
@@ -1040,7 +1061,7 @@ async function saveField(id, f, oldV, newV, date) {
     let applied = true;
     let r = await call(fn, { p_id: id, p_field: f, p_old: oldV, p_new: newV, p_force: false });
     if (r && r.conflict) {
-      const show = v => f === "loc" ? (LOCN[v] || "空白") : f === "card" ? (v === true ? "○" : v === false ? "✕" : v ? v : "空白") : f === "tag" ? (tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
+      const show = v => f === "loc" ? (LOCN[v] || "空白") : f === "card" ? (v === true ? "○" : v === false ? "✕" : v ? v : "空白") : f === "tag" ? (typeof v === "string" ? v : tagName(v) || "空白") : (v === null || v === undefined ? "空白" : v);
       const force = await modal({
         title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
         body: `<p>「${esc(o.name)}」的這一格剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(show(r.current))}</b>。</p><p>要用你輸入的 <b>${esc(show(newV))}</b> 蓋掉嗎？</p>`
@@ -1067,7 +1088,7 @@ function applyLocal(o, f, v) {
   if (f === "name") o.name = v; else if (f === "kind") o.kind = v;
   else if (f === "loc") { o.loc = v; o.status = v ? (o.status === "none" ? "dispatched" : o.status) : "none"; }
   else if (f === "card") { if (typeof v === "string") { o.card_text = v; o.card = null; } else { o.card = v; o.card_text = null; } }
-  else if (f === "tag") o.tag_id = v;
+  else if (f === "tag") { if (typeof v === "string") { o.tag_text = v; o.tag_id = null; } else { o.tag_id = v; o.tag_text = null; } }
   else if (f.startsWith("c:")) { o.contents = { ...o.contents }; if (v) o.contents[f.slice(2)] = v; else delete o.contents[f.slice(2)]; }
   else if (f.startsWith("b:")) { o.boxes = { ...o.boxes }; if (v) o.boxes[f.slice(2)] = v; else delete o.boxes[f.slice(2)]; }
   S.ordersJson = "";
@@ -1118,11 +1139,12 @@ function openMenu(k) {
   let opts = [];
   if (p.f === "kind") {
     const sun = dow(o.ship_date) === 0;
-    opts = [{ v: "寄", t: "寄出", dis: sun }, { v: "取", t: "店取" }, { v: null, t: "清除" }];
+    opts = [{ v: "寄", t: "寄出", dis: sun }, { v: "取", t: "店取" }, { v: "外場", t: "外場" }, { v: "送", t: "送" }, { v: "試吃", t: "試吃" }, { v: null, t: "清除" }];
   } else if (p.f === "loc") opts = [{ v: "store", t: "門市" }, { v: "factory", t: "工廠" }];
   else if (p.f === "card") opts = [{ v: true, t: "○　有小卡" }, { v: false, t: "✕　沒有小卡" }, { v: "__text__", t: "自己輸入…" }, { v: null, t: "清除" }];
   else if (p.f === "tag") {
     opts = S.cfg.tags.filter(t => !t.hidden || t.id === o.tag_id).map(t => ({ v: t.id, t: t.name }));
+    opts.push({ v: "__text__", t: "自己輸入…" });
     opts.push({ v: null, t: "空白" });
   }
   const m = document.createElement("div"); m.id = "menu"; m.className = "menu";
@@ -1136,7 +1158,7 @@ function openMenu(k) {
   const cur = orderValue(o, p.f);
   m.querySelectorAll("button").forEach(b => b.onclick = async () => {
     const x = opts[Number(b.dataset.i)]; closeMenu(); trackPresence(S.cur);
-    if (x.v === "__text__") return startEdit(k, true);
+    if (x.v === "__text__") return startEdit(k, true);   // 卡、吊牌自己輸入文字
     if (x.v !== cur) await saveField(o.id, p.f, cur, x.v, o.ship_date);
     arm(S.cur);
   });
@@ -2157,7 +2179,7 @@ document.addEventListener("keydown", e => {
 // 抓某月份最新的出貨表訂單（檢查有沒有被別人改過用）
 async function freshOrders(ym) { return await call("ship_month", { p_month: ym + "-01" }); }
 const undoShow = (f, v) => v === null || v === undefined || v === "" ? "空白"
-  : f === "loc" ? (LOCN[v] || v) : f === "card" ? (v === true ? "○" : v === false ? "✕" : v) : f === "tag" ? (tagName(v) || "空白") : v;
+  : f === "loc" ? (LOCN[v] || v) : f === "card" ? (v === true ? "○" : v === false ? "✕" : v) : f === "tag" ? (typeof v === "string" ? v : tagName(v) || "空白") : v;
 function sheetFieldLabel(f) {
   if (f === "kind") return "寄/取"; if (f === "loc") return "門市/工廠"; if (f === "name") return "客人";
   if (f === "card") return "卡"; if (f === "tag") return "吊牌";
