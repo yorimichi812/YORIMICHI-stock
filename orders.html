@@ -427,7 +427,7 @@ async function showLogin() {
   const body = $("#gate-body");
   body.innerHTML = `<p class="muted">載入名單中</p>`;
   let dir = [];
-  try { const r = await sb.from("login_directory").select("*").order("name"); dir = r.data || []; } catch (e) {}
+  try { const r = await sb.from("ship_login_directory").select("*").order("name"); dir = r.data || []; } catch (e) {}
   const groups = [["管理者", dir.filter(u => u.role === "admin")], ["人員", dir.filter(u => u.role !== "admin")]].filter(g => g[1].length);
   body.innerHTML = `<div id="pick">${groups.map(([t, list]) => `<h2>${t}</h2><div class="names">${list.map(u =>
       `<button type="button" data-email="${esc(u.email)}" data-name="${esc(u.name)}">${esc(u.name)}</button>`).join("")}</div>`).join("") || `<p class="muted">讀不到名單，請重新整理。</p>`}</div>
@@ -907,7 +907,7 @@ function editValue(k) {
 function beginTyping() {
   if (S.edit || !S.armed) return;
   const k = S.armed, c = cellOf(k); if (!c) return;
-  S.edit = { key: k, old: editValue(k), date: c.dataset.d };
+  S.edit = { key: k, old: editValue(k), date: c.dataset.d, typed: true };   // 選好格子直接打字
   S.armed = null; $("#editor").classList.remove("armed");
   placeEditor(); trackPresence(k);
 }
@@ -929,7 +929,10 @@ function startEdit(k, cardText) {
 function editorKey(e) {
   if (S.edit) {
     if (e.isComposing) return;
-    if (e.key === "Enter") { e.preventDefault(); commitEdit(e.shiftKey ? "up" : "down"); }
+    const arrow = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" }[e.key];
+    // 選好格子直接打字時，方向鍵存檔並跳格；雙擊或按 Enter 進入修改時，方向鍵在文字裡移動游標
+    if (arrow && S.edit.typed) { e.preventDefault(); commitEdit(arrow); }
+    else if (e.key === "Enter") { e.preventDefault(); commitEdit(e.shiftKey ? "up" : "down"); }
     else if (e.key === "Tab") { e.preventDefault(); commitEdit(e.shiftKey ? "left" : "right"); }
     else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
     return;
@@ -2543,7 +2546,7 @@ document.addEventListener("change", e => {
 
 /* =================== 人員 =================== */
 const SHIP_ROLES = [["", "不開通"], ["admin", "管理者"], ["cs", "客服"], ["packer", "包裝部"], ["kitchen", "內場"]];
-const APP_ROLES = [["staff", "一般"], ["admin", "管理者"]];
+const APP_ROLES = [["staff", "一般"], ["admin", "管理者"], ["none", "不開通"]];
 function renderPeople() {
   const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${(cur || "") === v ? "selected" : ""}>${t}</option>`).join("");
   const ho = S.handout;

@@ -877,6 +877,23 @@ function App() {
       onDone: () => load(true)
     });
   }
+  if (me.role === "none") {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "gate"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "panel"
+    }, /*#__PURE__*/React.createElement("h1", {
+      className: "ptitle"
+    }, "📦 順道庫存管理"), /*#__PURE__*/React.createElement("p", {
+      className: "phint",
+      style: {
+        marginTop: 12
+      }
+    }, me.name, "，你的帳號沒有開通撥調，請管理者幫你開通。"), /*#__PURE__*/React.createElement("button", {
+      className: "btn wide",
+      onClick: () => sb.auth.signOut()
+    }, "登出")));
+  }
   const logIt = (action, summary, snapshot) => sb.from("audit_logs").insert({
     action,
     summary,
@@ -1089,7 +1106,7 @@ function LoginScreen({
         const {
           data,
           error
-        } = await sb.from("login_directory").select("*").order("name");
+        } = await sb.from("stock_login_directory").select("*").order("name");
         setDir(error ? [] : data || []);
       } catch {
         setDir([]);
@@ -2281,7 +2298,7 @@ function UsersPanel({
         p_role: nRole
       });
       if (error) throw error;
-      await logIt("新增人員", nName.trim() + "　" + (nRole === "admin" ? "管理者" : "一般"));
+      await logIt("新增人員", nName.trim() + "　" + (nRole === "admin" ? "管理者" : nRole === "none" ? "不開通" : "一般"));
       setHandout({
         name: nName.trim(),
         pin: nPw
@@ -2334,14 +2351,13 @@ function UsersPanel({
       await logIt("修改姓名", u.name + " → " + nv.trim());
     }, "已更新");
   };
-  const setRole = async u => {
-    const next = u.role === "admin" ? "staff" : "admin";
+  const setRole = async (u, next) => {
     await run(async () => {
       const r = await sb.from("app_users").update({
         role: next
       }).eq("id", u.id);
       if (r.error) throw r.error;
-      await logIt("修改身分", u.name + " → " + (next === "admin" ? "管理者" : "一般"));
+      await logIt("修改身分", u.name + " → " + (next === "admin" ? "管理者" : next === "none" ? "不開通" : "一般"));
     });
   };
   const toggle = async u => {
@@ -2403,7 +2419,10 @@ function UsersPanel({
   }, "一般，可以 KEY 單和庫存"), /*#__PURE__*/React.createElement("button", {
     className: nRole === "admin" ? "on" : "",
     onClick: () => setNRole("admin")
-  }, "管理者，多了開帳號")))), /*#__PURE__*/React.createElement("button", {
+  }, "管理者，多了開帳號"), /*#__PURE__*/React.createElement("button", {
+    className: nRole === "none" ? "on" : "",
+    onClick: () => setNRole("none")
+  }, "不開通，只用出貨表")))), /*#__PURE__*/React.createElement("button", {
     className: "btn wide",
     style: {
       marginTop: 13
@@ -2465,7 +2484,9 @@ function UsersPanel({
     className: "l"
   }, u.role === "admin" ? /*#__PURE__*/React.createElement("span", {
     className: "tag admin"
-  }, "管理者") : "一般"), isAdmin && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+  }, "管理者") : u.role === "none" ? /*#__PURE__*/React.createElement("span", {
+    className: "sub"
+  }, "不開通") : "一般"), isAdmin && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
     onClick: () => rename(u)
   }, "改名"), " ", /*#__PURE__*/React.createElement("button", {
@@ -2473,8 +2494,11 @@ function UsersPanel({
     onClick: () => resetPin(u)
   }, "重設密碼"), " ", /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
-    onClick: () => setRole(u)
+    onClick: () => setRole(u, u.role === "admin" ? "staff" : "admin")
   }, u.role === "admin" ? "降為一般" : "設為管理者"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn ghost mini",
+    onClick: () => setRole(u, u.role === "none" ? "staff" : "none")
+  }, u.role === "none" ? "開通撥調" : "不開通"), " ", /*#__PURE__*/React.createElement("button", {
     className: "btn ghost mini",
     onClick: () => toggle(u)
   }, u.active ? "停用" : "啟用"), " ", /*#__PURE__*/React.createElement("button", {
