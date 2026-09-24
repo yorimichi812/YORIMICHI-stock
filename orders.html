@@ -420,6 +420,25 @@ async function boot() {
   renderNav();
   startSync();
   await loadData(true);
+  if (["admin", "cs"].includes(role())) showNotices();
+}
+// 登入時的每日公告：庫存對不上＋撥調低庫存。當天按「知道了」後不再跳
+async function showNotices() {
+  let n;
+  try { n = await call("ship_notices"); } catch (e) { return; }
+  if (!n || n.seen || (!n.mismatch.length && !n.low.length)) return;
+  const locName = l => l === "factory" ? "工廠" : "門市";
+  const md2 = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+  const num = v => Number(v).toLocaleString("zh-TW");
+  const body = (n.mismatch.length ? `<h4 style="margin:0 0 6px">出貨表和撥調的庫存對不上</h4>
+      <p class="muted" style="font-size:12.5px;margin:0 0 6px">今天以前的訂單都已派單，但兩邊今天的剩餘數不一樣。請確認是哪一邊要修正。</p>
+      <table class="plain" style="width:100%;margin-bottom:14px"><tr><th>代號</th><th>撥調品項</th><th>出貨表</th><th>撥調門市＋工廠</th><th>差</th></tr>
+      ${n.mismatch.map(m => `<tr><td>${esc(m.codes)}</td><td>${esc(m.item)}</td><td class="num">${num(m.ship)}</td><td class="num">${num(m.stock)}</td><td class="num" style="color:var(--alert);font-weight:700">${Number(m.stock) - Number(m.ship) > 0 ? "+" : ""}${num(Number(m.stock) - Number(m.ship))}</td></tr>`).join("")}</table>` : "")
+    + (n.low.length ? `<h4 style="margin:0 0 6px">撥調低庫存（未來 7 天）</h4>
+      <table class="plain" style="width:100%"><tr><th>品項</th><th>地點</th><th>哪天會低於</th><th>當天剩</th><th>安全量</th></tr>
+      ${n.low.map(l => `<tr><td>${esc(l.item)}</td><td>${locName(l.loc)}</td><td>${md2(l.date)}</td><td class="num" style="color:var(--alert);font-weight:700">${num(l.qty)}</td><td class="num">${num(l.min)}</td></tr>`).join("")}</table>` : "");
+  const ok = await modal({ title: "今日公告", body, ok: "知道了", noCancel: true, wide: true });
+  if (ok) { try { await call("ship_notice_ack"); } catch (e) {} }
 }
 
 async function showLogin() {
@@ -2202,13 +2221,13 @@ async function askResync(itemId) {
   const it = S.cfg.items.find(i => i.id === itemId);
   const pick = await modal({
     title: "要更新已派單的訂單嗎？", ok: "只更新今天以後的", cancel: "都不動",
-    body: `<p>「${esc(it ? it.code : "")}」的撥調系統使用名稱改了。已經派單的訂單，撥調那邊要跟著更新嗎？</p>
-      <p class="muted" style="font-size:13px">只更新今天以後的：出貨日期是今天或之後的已派單訂單。<br>全部更新：包括過去已經出貨的。<br>都不動：只影響之後新派單或修改的訂單。</p>`,
+    body: `<p>「${esc(it ? it.code : "")}」的撥調系統使用名稱改了。已經派單的訂單和已經填的製作，撥調那邊要跟著更新嗎？</p>
+      <p class="muted" style="font-size:13px">只更新今天以後的：出貨日期或製作日期是今天或之後的。<br>全部更新：包括過去的。<br>都不動：只影響之後新派單、新填或修改的。</p>`,
     extra: [{ label: "全部更新", value: "all" }]
   });
   if (!pick) return;
   const scope = pick === "all" ? "all" : "future";
-  try { const n = await call("ship_stock_resync", { p_item: itemId, p_scope: scope }); notify(); await refresh(); toast(`已重新同步 ${n} 筆訂單`); }
+  try { const n = await call("ship_stock_resync", { p_item: itemId, p_scope: scope }); notify(); await refresh(); toast(`已重新同步 ${n} 筆`); }
   catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
 }
 const stockItemName = id => { const s = (S.stockItems || []).find(v => v.id === id); return s ? s.name : "（撥調品項已刪除）"; };

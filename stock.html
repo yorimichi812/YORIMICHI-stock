@@ -859,7 +859,8 @@ function App() {
     }
   };
   const low = lowStockScan(db);
-  const showNotice = !noticeClosed && low.length > 0 && me.noticeSeenOn !== today();
+  // 低庫存公告改到出貨表登入時統一顯示，這裡不再跳
+  const showNotice = false;
   const closeNotice = async () => {
     setNoticeClosed(true);
     try {
