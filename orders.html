@@ -2216,19 +2216,25 @@ async function editSetting(kind, id) {
   });
   if (res && res.changedStock) await askResync(res.changedStock);
 }
-// 改了代號的撥調對應後，問要怎麼更新已派單的訂單
+// 改了代號的撥調對應後，分別問已派單的訂單、已填的製作要不要跟著搬
 async function askResync(itemId) {
   const it = S.cfg.items.find(i => i.id === itemId);
-  const pick = await modal({
-    title: "要更新已派單的訂單嗎？", ok: "只更新今天以後的", cancel: "都不動",
-    body: `<p>「${esc(it ? it.code : "")}」的撥調系統使用名稱改了。已經派單的訂單和已經填的製作，撥調那邊要跟著更新嗎？</p>
-      <p class="muted" style="font-size:13px">只更新今天以後的：出貨日期或製作日期是今天或之後的。<br>全部更新：包括過去的。<br>都不動：只影響之後新派單、新填或修改的。</p>`,
+  const code = esc(it ? it.code : "");
+  const ask = (title, what, dateWord) => modal({
+    title, ok: "只更新今天以後的", cancel: "都不動",
+    body: `<p>「${code}」的撥調系統使用名稱改了。${what}，撥調那邊要跟著換成新的品項嗎？</p>
+      <p class="muted" style="font-size:13px">只更新今天以後的：${dateWord}是今天或之後的。<br>全部更新：包括過去的。<br>都不動：留在原本的品項，只影響之後新的。</p>`,
     extra: [{ label: "全部更新", value: "all" }]
   });
-  if (!pick) return;
-  const scope = pick === "all" ? "all" : "future";
-  try { const n = await call("ship_stock_resync", { p_item: itemId, p_scope: scope }); notify(); await refresh(); toast(`已重新同步 ${n} 筆`); }
-  catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
+  for (const [what, title, desc, dateWord] of [
+    ["orders", "已派單的訂單要跟著更新嗎？", "已經派單的訂單", "出貨日期"],
+    ["make", "已填的製作要跟著更新嗎？", "已經填過的製作（撥調門市的自動入庫）", "製作日期"]
+  ]) {
+    const pick = await ask(title, desc, dateWord);
+    if (!pick) continue;
+    try { const n = await call("ship_stock_resync", { p_item: itemId, p_scope: pick === "all" ? "all" : "future", p_what: what }); notify(); await refresh(); toast(`已重新同步 ${n} 筆${what === "orders" ? "訂單" : "製作"}`); }
+    catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
+  }
 }
 const stockItemName = id => { const s = (S.stockItems || []).find(v => v.id === id); return s ? s.name : "（撥調品項已刪除）"; };
 async function editBom(boxId, kind = "box") {
