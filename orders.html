@@ -149,8 +149,6 @@ table.st th.day-h{border-right:2px solid var(--grid-strong)}
 table.st td.rm{border-right:2px solid var(--grid-strong);font-weight:500}
 table.st td.mk{color:#1f5a8a}
 table.st td.low{background:#f8c9c4 !important;color:#8f1d12}
-table.st th.sun{background:var(--sun-head);color:#fff}
-table.st th.today{background:#fdf1d6}
 table.st tbody tr.r td{background:#fff}
 table.st tbody tr.r.z1 td{background:#fbf6e6}
 table.st tbody tr.r.z2 td{background:#eef4ea}
@@ -2304,7 +2302,8 @@ function renderStock() {
   const head1 = [], headW = [], head2 = [];
   const mo = Number(ym.slice(5));
   for (let d = 1; d <= n; d++) {
-    const ds = dstr(ym, d), sun = dow(ds) === 0, cls = `${sun ? "sun" : ""} ${ds === today ? "today" : ""}`;
+    // 庫存表的日期標頭每一天都一樣，今天和星期日都不另外上色
+    const ds = dstr(ym, d), cls = "";
     head1.push(`<th colspan="2" class="day-h ${cls}">${mo}月${d}日</th>`);
     headW.push(`<th colspan="2" class="day-h wd ${cls}">週${WD[dow(ds)]}</th>`);
     head2.push(`<th class="mkh">%MK%</th><th class="day-h">剩餘</th>`);
