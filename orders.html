@@ -705,6 +705,28 @@ const cardText = o => o.card_text ? o.card_text : o.card === true ? "○" : o.ca
 const tagName = id => { const t = S.cfg.tags.find(x => x.id === id); return t ? t.name : ""; };
 
 /* =================== 出貨表 =================== */
+// 空白列的「寄/取」格：選了就建立一筆客人欄空白的訂單（試吃、外場等）
+function openNewKindMenu(k, p) {
+  const c = cellOf(k); if (!c) return;
+  const sun = dow(p.date) === 0;
+  const m = document.createElement("div"); m.id = "menu"; m.className = "menu";
+  const opts = [{ v: "寄", t: "寄出", dis: sun }, { v: "取", t: "店取" }, { v: "外場", t: "外場" }, { v: "送", t: "送" }, { v: "試吃", t: "試吃" }];
+  m.innerHTML = opts.map(x => `<button type="button" data-v="${x.v}" ${x.dis ? "disabled" : ""}>${x.t}</button>`).join("") +
+    `<div class="hint" style="color:var(--soft)">選了就新增一筆客人欄空白的訂單</div>`;
+  const host = $("#scroll"); host.appendChild(m);
+  const hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+  m.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; m.style.top = (cr.bottom - hr.top + host.scrollTop + 2) + "px";
+  m.querySelectorAll("button").forEach(b => b.onclick = async () => {
+    closeMenu();
+    try {
+      const id = await call("ship_order_create_kind", { p_date: p.date, p_kind: b.dataset.v });
+      pushUndo(`出貨表 ${md(p.date)} 新增「${b.dataset.v}」`, async () => { await call("ship_order_delete", { p_id: uid("o", id) }); });
+      S.touched = id; notify(); await refresh();
+      const nk = `w|${id}|kind`; if (cellOf(nk)) { setCur(nk); S.cells = new Set([nk]); S.anchorCell = nk; syncRowsFromCells(); paintCells(); }
+    } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); }
+  });
+  (m.querySelector("button:not([disabled])")).focus();
+}
 // 綠色區的名字：只看括號前面；沒有名字的（外場、試吃）顯示寄/取的內容
 const greenName = o => { const b = String(o.name || "").split(/[(（]/)[0].trim(); return b || o.kind || ""; };
 // 綠色區要顯示的列：同一天、括號前同名的只顯示第一筆；其他同名的有填盒數才顯示
@@ -955,6 +977,7 @@ function startEdit(k, cardText) {
   if (!canEdit()) return;
   const p = parseKey(k);
   if (p.s !== "st") {
+    if (p.isNew && p.f === "kind") return openMenu(k);
     if (p.isNew && p.f !== "name") return setCur(k.replace(/\|[^|]+$/, "|name"));
     if (["kind", "loc", "card", "tag"].includes(p.f) && !((p.f === "card" || p.f === "tag") && cardText)) return openMenu(k);
   }
@@ -1121,7 +1144,7 @@ function moveCursor(dir) {
   }
   if (t) {
     const p = parseKey(t.dataset.k);
-    if (p.isNew && p.f !== "name") t = cellOf(t.dataset.k.replace(/\|[^|]+$/, "|name")) || t;
+    if (p.isNew && p.f !== "name" && p.f !== "kind") t = cellOf(t.dataset.k.replace(/\|[^|]+$/, "|name")) || t;
     setCur(t.dataset.k);
     const tp = parseKey(t.dataset.k);
     if (tp.s !== "st") { S.cells = tp.isNew ? new Set() : new Set([t.dataset.k]); S.anchorCell = t.dataset.k; syncRowsFromCells(); paintCells(); }
@@ -1134,7 +1157,9 @@ function openMenu(k) {
   closeMenu();
   const ed = $("#editor"); if (ed && !S.edit) { S.armed = null; ed.hidden = true; }
   if (!canEdit()) return;
-  const p = parseKey(k); if (p.isNew) return;
+  const p = parseKey(k);
+  if (p.isNew && p.f === "kind") return openNewKindMenu(k, p);
+  if (p.isNew) return;
   const o = orderOf(p.o); const c = cellOf(k); if (!o || !c) return;
   let opts = [];
   if (p.f === "kind") {
@@ -1353,8 +1378,9 @@ document.addEventListener("mousedown", e => {
     syncRowsFromCells(); paintCells();
   }
   let target = k;
-  if (p.isNew && p.f !== "name") target = k.replace(/\|[^|]+$/, "|name");
+  if (p.isNew && p.f !== "name" && p.f !== "kind") target = k.replace(/\|[^|]+$/, "|name");
   setCur(target);
+  if (p.isNew && p.f === "kind" && canEdit()) openMenu(k);   // 空白列的寄/取：直接選就新增
 });
 document.addEventListener("mousemove", e => {
   const d = S.drag; if (!d) return;
@@ -1369,7 +1395,7 @@ document.addEventListener("mousemove", e => {
 document.addEventListener("mouseup", () => {
   const d = S.drag; S.drag = null; if (!d || d.moved || d.mod) return;
   const p = parseKey(d.start);
-  if (canEdit() && ["kind", "loc", "card", "tag"].includes(p.f) && !p.isNew && S.cur === d.start) openMenu(d.start);
+  if (canEdit() && ["kind", "loc", "card", "tag"].includes(p.f) && (!p.isNew || p.f === "kind") && S.cur === d.start) openMenu(d.start);
 });
 document.addEventListener("dblclick", e => {
   const td = e.target.closest && e.target.closest("td[data-k]"); if (!td) return;
