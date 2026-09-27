@@ -627,6 +627,12 @@ function buildMonth(db, itemId, year, month) {
     factory: {},
     store: {}
   }; // 出貨、撥調出、盤點短少
+  // 「進出」格只顯示手動輸入的入庫和盤點校正；
+  // 訂單、撥調、出貨表製作帶來的入庫（有 shipKey）照樣算進庫存，但不顯示在進出格
+  const man = {
+    factory: {},
+    store: {}
+  };
   let f = 0;
   let s = 0;
   for (const e of db.entries) {
@@ -635,6 +641,7 @@ function buildMonth(db, itemId, year, month) {
       if (e.loc === "factory") f += e.qty;else s += e.qty;
     } else if (inn[e.loc]) {
       if (e.qty > 0) inn[e.loc][e.date] = (inn[e.loc][e.date] || 0) + e.qty;else out[e.loc][e.date] = (out[e.loc][e.date] || 0) - e.qty;
+      if ((e.type === "in" || e.type === "adjust") && !e.shipKey) man[e.loc][e.date] = (man[e.loc][e.date] || 0) + e.qty;
     }
   }
   for (const o of db.orders) {
@@ -662,6 +669,8 @@ function buildMonth(db, itemId, year, month) {
       sIn,
       fOut,
       sOut,
+      fMan: man.factory[date] || 0,
+      sMan: man.store[date] || 0,
       fLeft: f,
       sLeft: s,
       total: f + s
@@ -744,7 +753,8 @@ async function fetchAll() {
       after: e.after_qty,
       note: e.note,
       operator: e.operator_name,
-      userId: e.operator_id
+      userId: e.operator_id,
+      shipKey: e.ship_stock_key || null
     })),
     logs: (logs.data || []).map(l => ({
       id: l.id,
@@ -1309,7 +1319,7 @@ function StockPage({
     }
   };
   const moveCell = (r, item) => locsOf().map(w => {
-    const v = w === "factory" ? r.fIn - r.fOut : r.sIn - r.sOut;
+    const v = w === "factory" ? r.fMan : r.sMan;
     const c = w === "factory" ? "f" : "s";
     const k = keyOf(item.id, w, r.date);
     const on = edit === k;
@@ -1461,7 +1471,7 @@ function StockPage({
     onClick: () => setPending(null)
   }, "取消"))), /*#__PURE__*/React.createElement("p", {
     className: "note"
-  }, "點一下「進出」格子就能輸入。正數會問你是入庫還是盤點校正，負數直接記成盤點校正。 撥調要到左邊的撥調頁，因為它同時動工廠和門市兩邊。"));
+  }, "點一下「進出」格子就能輸入。正數會問你是入庫還是盤點校正，負數直接記成盤點校正。 「進出」格只顯示在這裡手動輸入的入庫和盤點校正；訂單、撥調、出貨表製作的入庫不顯示，但都已算進庫存。 撥調要到左邊的撥調頁，因為它同時動工廠和門市兩邊。"));
 }
 
 /* ------------------------------------------------------------------ */
