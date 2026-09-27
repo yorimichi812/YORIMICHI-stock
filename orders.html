@@ -452,28 +452,38 @@ async function boot() {
   await loadData(true);
   if (["admin", "cs"].includes(role())) showNotices();
 }
-// 登入時的每日公告：庫存對不上＋撥調低庫存。當天按「知道了」後不再跳
+// 登入時的每日公告：庫存對不上、撥調低庫存一天一次（按「知道了」後當天不再跳）；
+// 出貨量接近上限：已經提醒過的日子不再跳，有新的日子接近上限時，重新整理或登入就再跳一次（只列出貨量）
 async function showNotices() {
   let n;
   try { n = await call("ship_notices"); } catch (e) { return; }
-  const caps = (n && n.cap) || [];
-  if (!n || n.seen || (!n.mismatch.length && !n.low.length && !caps.length)) return;
+  if (!n) return;
+  const caps = n.cap || [];
+  const capNew = new Set((n.cap_new || []).map(String));   // 還沒執行 migration 22 時沒有 cap_new，就維持一天一次
+  const full = !n.seen && (n.mismatch.length || n.low.length || caps.length);   // 今天第一次：全部都列
+  const onlyCap = !full && capNew.size > 0;                                     // 今天看過了，但有新的日子接近上限
+  if (!full && !onlyCap) return;
   const locName = l => l === "factory" ? "工廠" : "門市";
   const md2 = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
   const num = v => Number(v).toLocaleString("zh-TW");
-  const body = (n.mismatch.length ? `<h4 style="margin:0 0 6px">出貨表和撥調的庫存對不上</h4>
+  const showMis = full && n.mismatch.length, showLow = full && n.low.length;
+  const capRows = full ? caps : caps.filter(c => capNew.has(String(c.date)));
+  const body = (showMis ? `<h4 style="margin:0 0 6px">出貨表和撥調的庫存對不上</h4>
       <p class="muted" style="font-size:12.5px;margin:0 0 6px">今天以前的訂單都已派單，但兩邊今天的剩餘數不一樣。請確認是哪一邊要修正。</p>
       <table class="plain" style="width:100%;margin-bottom:14px"><tr><th>代號</th><th>撥調品項</th><th>出貨表</th><th>撥調門市＋工廠</th><th>差</th></tr>
       ${n.mismatch.map(m => `<tr><td>${esc(m.codes)}</td><td>${esc(m.item)}</td><td class="num">${num(m.ship)}</td><td class="num">${num(m.stock)}</td><td class="num" style="color:var(--alert);font-weight:700">${Number(m.stock) - Number(m.ship) > 0 ? "+" : ""}${num(Number(m.stock) - Number(m.ship))}</td></tr>`).join("")}</table>` : "")
-    + (n.low.length ? `<h4 style="margin:0 0 6px">撥調低庫存（未來 7 天）</h4>
+    + (showLow ? `<h4 style="margin:0 0 6px">撥調低庫存（未來 7 天）</h4>
       <table class="plain" style="width:100%"><tr><th>品項</th><th>地點</th><th>哪天會低於</th><th>當天剩</th><th>安全量</th></tr>
       ${n.low.map(l => `<tr><td>${esc(l.item)}</td><td>${locName(l.loc)}</td><td>${md2(l.date)}</td><td class="num" style="color:var(--alert);font-weight:700">${num(l.qty)}</td><td class="num">${num(l.min)}</td></tr>`).join("")}</table>` : "")
-    + (caps.length ? `<h4 style="margin:${n.mismatch.length || n.low.length ? "14px" : "0"} 0 6px">出貨量接近上限</h4>
-      <p class="muted" style="font-size:12.5px;margin:0 0 6px">今天以後的日子，綠底禮盒（有勾「算出貨量」的款式）差 ${num(n.margin)} 盒以內就會列出來。</p>
+    + (capRows.length ? `<h4 style="margin:${showMis || showLow ? "14px" : "0"} 0 6px">${onlyCap ? "又有日子接近出貨量上限" : "出貨量接近上限"}</h4>
+      <p class="muted" style="font-size:12.5px;margin:0 0 6px">${onlyCap ? "下面是之前還沒提醒過的日子。" : ""}今天以後的日子，綠底禮盒（有勾「算出貨量」的款式）差 ${num(n.margin)} 盒以內就會列出來。</p>
       <table class="plain" style="width:100%"><tr><th>日期</th><th>目前盒數</th><th>上限</th><th>還可以接</th></tr>
-      ${caps.map(c => { const left = Number(c.cap) - Number(c.boxes); return `<tr><td>${md2(c.date)}（${WD[dow(c.date)]}）</td><td class="num" style="font-weight:700">${num(c.boxes)}</td><td class="num">${num(c.cap)}</td><td class="num" style="color:var(--alert);font-weight:700">${left < 0 ? `超過 ${num(-left)}` : num(left)}</td></tr>`; }).join("")}</table>` : "");
-  const ok = await modal({ title: "今日公告", body, ok: "知道了", noCancel: true, wide: true });
-  if (ok) { try { await call("ship_notice_ack"); } catch (e) {} }
+      ${capRows.map(c => { const left = Number(c.cap) - Number(c.boxes); return `<tr><td>${md2(c.date)}（${WD[dow(c.date)]}）</td><td class="num" style="font-weight:700">${num(c.boxes)}</td><td class="num">${num(c.cap)}</td><td class="num" style="color:var(--alert);font-weight:700">${left < 0 ? `超過 ${num(-left)}` : num(left)}</td></tr>`; }).join("")}</table>` : "");
+  const ok = await modal({ title: onlyCap ? "出貨量提醒" : "今日公告", body, ok: "知道了", noCancel: true, wide: true });
+  if (!ok) return;
+  // 記下這次提醒過的日子；資料庫還沒更新（沒有 migration 22）就用舊的方式
+  try { await call("ship_notice_ack", { p_cap_days: caps.map(c => String(c.date)) }); }
+  catch (e) { try { await call("ship_notice_ack"); } catch (e2) {} }
 }
 
 async function showLogin() {
