@@ -709,7 +709,9 @@ function renderBar() {
       <button class="btn ghost" type="button" data-a="st-packed" ${n ? "" : "disabled"}><span class="swatch-y"></span><span class="swatch-y" style="margin-left:-4px"></span>已包裝</button>
       <button class="btn ghost" type="button" data-a="st-none" ${n ? "" : "disabled"}>取消標示</button>
       <button class="btn ghost" type="button" data-a="move" ${n ? "" : "disabled"}>改日期</button>
-      <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>`;
+      <button class="btn ghost" type="button" data-a="paint" ${S.cells.size ? "" : "disabled"}><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:linear-gradient(135deg,#cfe2ff 50%,#ffd8b0 50%);border:1px solid rgba(0,0,0,.15)"></span>塗色</button>
+      <button class="btn ghost" type="button" data-a="tcolor" id="tc-btn" disabled><b style="color:#c62828;text-decoration:underline">A</b>文字顏色</button>`;
+    tcButtonState();
   } else tools.innerHTML = "";
 }
 function render() {
@@ -977,7 +979,8 @@ function editorEl() {
     e.addEventListener("keydown", editorKey);
     e.addEventListener("input", beginTyping);
     e.addEventListener("compositionstart", beginTyping);
-    e.addEventListener("blur", () => { if (S.edit && !S.edit.closing && !openModals.size) commitEdit(null); });
+    // 名字的上色編輯框（S.edit.rich）有自己的失去焦點處理，這裡不管
+    e.addEventListener("blur", () => { if (S.edit && !S.edit.rich && !S.edit.closing && !openModals.size) commitEdit(null); });
     $("#scroll").appendChild(e);
   }
   return e;
@@ -1194,6 +1197,19 @@ function startEdit(k, cardText) {
   }
   const c = cellOf(k); if (!c) return;
   const old = editValue(k);
+  if (p.s === "w" && p.f === "name" && !p.isNew) {
+    // 白底客人名字：可以反白部分文字改顏色
+    const o = orderOf(p.o); if (!o) return;
+    const runs = nameRuns(o);
+    S.edit = { key: k, old, oldRuns: runs, date: c.dataset.d, rich: true, id: o.id, name: o.name }; S.armed = null;
+    const r = richEl();
+    r.innerHTML = nameHTML(old || "", runs);
+    placeEditor();
+    r.focus({ preventScroll: true });
+    const n = Array.from(String(old || "")).length; richSelect(r, 0, n);   // 跟原本一樣，進入修改時先全選
+    trackPresence(k);
+    return;
+  }
   S.edit = { key: k, old, date: c.dataset.d }; S.armed = null;
   const e = editorEl();
   e.value = old === null || old === undefined || typeof old === "boolean" ? "" : p.f === "tag" && typeof old === "number" ? tagName(old) : String(old);
@@ -1225,6 +1241,26 @@ function cancelEdit() {
 async function commitEdit(move) {
   if (!S.edit || S.edit.closing) return;
   const ed = S.edit; ed.closing = true;
+  if (ed.rich) {
+    // 客人名字（可上色）：先存名字，再存顏色
+    const r = $("#rich-editor"), m = readRich(r);
+    let a = 0, b = m.chars.length;
+    while (a < b && /\s/.test(m.chars[a])) a++;
+    while (b > a && /\s/.test(m.chars[b - 1])) b--;
+    const text = m.chars.slice(a, b).join(""), runs = toRuns(m.cols.slice(a, b));
+    S.edit = null; trackPresence(S.cur); closeTcMenu();
+    r.hidden = true; r.innerHTML = "";
+    const p = parseKey(ed.key);
+    let ok = true;
+    if (text === "" || text !== ed.old) {
+      ok = await saveName(p, ed, text);   // 名字改了，資料庫會先清掉舊的顏色
+      if (ok === true && text !== "" && runs.length && orderOf(ed.id)) ok = await saveNameColors(ed.id, [], runs, ed.date, text);
+    } else if (JSON.stringify(runs) !== JSON.stringify(ed.oldRuns)) {
+      ok = await saveNameColors(ed.id, ed.oldRuns, runs, ed.date, text);
+    }
+    if (move) moveCursor(move); else if (S.cur) arm(S.cur);
+    return;
+  }
   const raw = $("#editor").value.trim();
   S.edit = null; trackPresence(S.cur);
   const e = $("#editor"); e.value = ""; e.classList.add("armed");
@@ -3278,6 +3314,7 @@ document.addEventListener("click", e => {
   if (act === "st-none") return setStatus("none");
   if (act === "move") return moveDate();
   if (act === "cap-day") return capDay(a.dataset.d);
+  if (act === "tcolor") return openTcMenu(a);
   if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : S.view === "tasting" ? tsApplyColor : applyColor);
   if (act === "ts-archive") return tsArchive(true);
   if (act === "ts-unarchive") return tsArchive(false);
