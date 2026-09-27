@@ -779,17 +779,15 @@ function textWidth(t) {
 function renderSheet() {
   const ym = S.month, n = daysIn(ym);
   const items = monthItems(ym), boxes = monthBoxes(ym);
-  // 每一天的客人欄依那天最長的名字變寬（最少 W.nm，沒有上限）
-  const nmOf = (white, green, edit) => {
-    let w = 0;
-    for (const o of white) w = Math.max(w, textWidth(o.name));
-    for (const o of green) w = Math.max(w, textWidth(greenName(o)));
-    return Math.max(W.nm, Math.ceil(w) + (edit ? 13 : 0) + 12);
-  };
-  const widthOf = nm => Math.max(W.kd + W.lc + nm + items.length * W.it + W.tg + W.cd, nm + boxes.length * W.bx + 20);
   const byDay = {};
   for (const o of S.orders) (byDay[o.ship_date] = byDay[o.ship_date] || []).push(o);
   const edit = canEdit();
+  // 客人欄依這個月最長的名字變寬（最少 W.nm，沒有上限），整個月每一天一樣寬，上下才對齊
+  // （綠底顯示的是括號前的名字，一定比完整名字短，所以量完整名字就夠）
+  let nameW = 0;
+  for (const o of S.orders) if (String(o.ship_date).startsWith(ym)) nameW = Math.max(nameW, textWidth(o.name || o.kind || ""));
+  const nm = Math.max(W.nm, Math.ceil(nameW) + (edit ? 13 : 0) + 12);
+  const width = Math.max(W.kd + W.lc + nm + items.length * W.it + W.tg + W.cd, nm + boxes.length * W.bx + 20);
   let html = `<div class="sheet" id="sheet">`;
   for (let start = 1; start <= n; start += 7) {
     const days = []; for (let d = start; d < start + 7 && d <= n; d++) days.push(dstr(ym, d));
@@ -801,7 +799,6 @@ function renderSheet() {
       const white = [...list].sort((a, b) => a.sort_white - b.sort_white || a.id - b.id);
       const green = greenRows(list);
       const sun = dow(d) === 0;
-      const nm = nmOf(white, green, edit), width = widthOf(nm);
       // 這天另外設了出貨量上限，就在標頭顯示；管理者和客服點標頭可以設定
       const dayCap = S.cap && S.cap.days ? S.cap.days[d] : undefined;
       html += `<div class="day ${sun ? "sun" : ""}" style="width:${width + 6}px">
