@@ -212,6 +212,19 @@ table.plain.items .ops{flex-wrap:nowrap}
 .pg-remind b{margin-right:6px}
 .pg-chip{border:1px solid #e0b949;background:#fff;border-radius:999px;padding:3px 10px;cursor:pointer;font-size:13px}
 .pg-chip:hover{border-color:var(--ink)}
+/* 今日提醒依項目分組 */
+.pg-rg{display:contents}
+.pg-rg-t{font-size:13px;font-weight:700;color:#8a6a12;margin-left:8px}
+/* 右邊有空位時：提醒放在表格右側，跟著捲動；空位不夠就回到表格上方 */
+.pg-body{display:flex;flex-direction:column;align-items:flex-start}
+.pg-body:not(.side) .pg-remind{align-self:stretch}
+.pg-body.side{flex-direction:row;align-items:flex-start;gap:16px}
+.pg-body.side .pg-table{order:1;flex:none}
+.pg-body.side .pg-remind{order:2;position:sticky;top:8px;z-index:5;width:220px;flex:none;display:block;overflow:auto;margin:0}
+.pg-body.side .pg-remind>b{display:block;margin:0 0 4px}
+.pg-body.side .pg-rg{display:block;margin-top:8px}
+.pg-body.side .pg-rg-t{display:block;margin:0 0 4px}
+.pg-body.side .pg-chip{display:block;width:100%;text-align:left;margin-bottom:4px;border-radius:8px}
 .pg-table{border-collapse:separate;border-spacing:0;background:#fff;font-size:13px;border-left:1px solid var(--grid);border-top:1px solid var(--grid)}
 .pg-table th,.pg-table td{border-right:1px solid var(--grid);border-bottom:1px solid #ebe7dd;padding:3px 8px;white-space:nowrap;height:24px}
 .pg-table th{position:sticky;top:0;z-index:3;background:#e8f0f8;font-weight:700;padding:6px 8px;border-bottom:1px solid var(--grid)}
@@ -1473,6 +1486,46 @@ function pgParseDate(raw) {
   return { v: t.toISOString().slice(0, 10) };
 }
 
+// 今日提醒的畫面（進程表、試吃追蹤表共用）：依項目分組，組的順序照表格欄位順序
+// chip(x) 產生一個名字按鈕
+function remindHTML(rem, order, chip) {
+  if (!rem.length) return `<div class="pg-remind"><b>今日提醒</b><span class="muted">今天沒有要處理的項目</span></div>`;
+  const groups = new Map();
+  order.forEach(t => groups.set(t, []));
+  rem.forEach(x => { if (!groups.has(x.t)) groups.set(x.t, []); groups.get(x.t).push(x); });
+  let html = "";
+  groups.forEach((list, t) => {
+    if (!list.length) return;
+    html += `<div class="pg-rg"><span class="pg-rg-t">${esc(t)}（${list.length}）</span>${list.map(chip).join("")}</div>`;
+  });
+  return `<div class="pg-remind"><b>今日提醒</b>${html}</div>`;
+}
+// 表格右邊放得下提醒就放右邊，放不下就回到表格上方
+const REMIND_W = 220, REMIND_GAP = 16;
+function remindLayout() {
+  const body = document.querySelector("#view .pg-body");
+  if (!body) return;
+  const table = body.querySelector(".pg-table"), box = body.querySelector(".pg-remind");
+  if (!table || !box) return;
+  const sc = $("#scroll"), page = body.closest(".page");
+  const cs = getComputedStyle(page);
+  const room = sc.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const side = table.offsetWidth + REMIND_GAP + REMIND_W <= room;
+  body.classList.toggle("side", side);
+  box.style.maxHeight = side ? (sc.clientHeight - 16) + "px" : "";
+}
+// 視窗大小改變時重新判斷；表格位置變了，游標框和「誰在編輯」標籤也要跟著移
+let remindTimer = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(remindTimer);
+  remindTimer = setTimeout(() => {
+    if (S.view !== "progress" && S.view !== "tasting") return;
+    remindLayout();
+    if (S.view === "progress") pgPlaceEditor(); else tsPlaceEditor();
+    paintPresence();
+  }, 100);
+});
+
 // 今日提醒：日期是今天、還沒完成、沒封存的
 function pgReminders() {
   const out = [];
@@ -1524,11 +1577,12 @@ function renderProgress() {
   $("#view").innerHTML = `<div class="page pg-page">
     <div class="pg-head"><h2>${PG.archive ? "進程表：封存區" : "進程表"}</h2>
       <button class="btn ghost" type="button" data-a="pg-area">${PG.archive ? "回到進程表" : `封存區（${nArch}）`}</button></div>
-    ${PG.archive ? `<p class="muted" style="margin:0 0 10px">這裡只顯示已封存的客人，可以直接編輯；選取後按上方的「取消封存」就會回到進程表。</p>` :
-      `<div class="pg-remind"><b>今日提醒</b>${rem.length ? rem.map(x => `<button type="button" class="pg-chip" data-a="pg-go" data-id="${x.id}" data-stage="${x.stage}">${esc(x.name)}｜${esc(x.t)}</button>`).join("")
-        : `<span class="muted">今天沒有要處理的項目</span>`}</div>`}
+    ${PG.archive ? `<p class="muted" style="margin:0 0 10px">這裡只顯示已封存的客人，可以直接編輯；選取後按上方的「取消封存」就會回到進程表。</p>` : ""}
+    <div class="pg-body">${PG.archive ? "" : remindHTML(rem, PG_STAGES.map(s => s.t),
+      x => `<button type="button" class="pg-chip" data-a="pg-go" data-id="${x.id}" data-stage="${x.stage}">${esc(x.name)}</button>`)}
     <table class="pg-table"><thead><tr><th class="pg-name">姓名</th><th>希望到貨日</th>${PG_STAGES.map(s => `<th>${esc(s.t)}</th>`).join("")}<th class="pg-note">備註</th></tr></thead>
-    <tbody>${body || `<tr><td colspan="${PG_STAGES.length + 3}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div>`;
+    <tbody>${body || `<tr><td colspan="${PG_STAGES.length + 3}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div></div>`;
+  remindLayout();
   if (S.cur && !cellOf(S.cur)) S.cur = null;
   pgPaintSel(); paintCursor(); paintPresence(); pgPlaceEditor();
 }
@@ -1883,11 +1937,12 @@ function renderTasting() {
   $("#view").innerHTML = `<div class="page pg-page">
     <div class="pg-head"><h2>${TS.archive ? "試吃追蹤表：封存區" : "試吃追蹤表"}</h2>
       <button class="btn ghost" type="button" data-a="ts-area">${TS.archive ? "回到試吃追蹤表" : `封存區（${nArch}）`}</button></div>
-    ${TS.archive ? `<p class="muted" style="margin:0 0 10px">這裡是已封存的客人（已追蹤、已提醒都打 V 的會自動移過來），可以直接編輯；選取後按上方的「取消封存」就會回到試吃追蹤表。</p>` :
-      `<div class="pg-remind"><b>今日提醒</b>${rem.length ? rem.map(x => `<button type="button" class="pg-chip" data-a="ts-go" data-id="${x.id}" data-f="${x.f}">${esc(x.name)}｜${esc(x.t)}</button>`).join("")
-        : `<span class="muted">今天沒有要處理的項目</span>`}</div>`}
+    ${TS.archive ? `<p class="muted" style="margin:0 0 10px">這裡是已封存的客人（已追蹤、已提醒都打 V 的會自動移過來），可以直接編輯；選取後按上方的「取消封存」就會回到試吃追蹤表。</p>` : ""}
+    <div class="pg-body">${TS.archive ? "" : remindHTML(rem, TS_COLS.filter(c => c.kind === "auto").map(c => c.t),
+      x => `<button type="button" class="pg-chip" data-a="ts-go" data-id="${x.id}" data-f="${x.f}">${esc(x.name)}</button>`)}
     <table class="pg-table ts-table"><thead><tr>${TS_COLS.map(c => `<th class="${c.f === "name" ? "pg-name" : ""}">${esc(c.t)}</th>`).join("")}</tr></thead>
-    <tbody>${body || `<tr><td colspan="${TS_COLS.length}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div>`;
+    <tbody>${body || `<tr><td colspan="${TS_COLS.length}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div></div>`;
+  remindLayout();
   if (S.cur && !cellOf(S.cur)) S.cur = null;
   tsPaintSel(); paintCursor(); paintPresence(); tsPlaceEditor();
 }
