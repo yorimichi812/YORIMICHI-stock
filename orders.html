@@ -130,6 +130,13 @@ tr.dropb td{box-shadow:inset 0 2px 0 var(--cur)}
 tr.dropa td{box-shadow:inset 0 -2px 0 var(--cur)}
 .editor{position:absolute;z-index:20;border:2px solid var(--cur);background:#fff;padding:0 3px;font-size:12.5px;outline:none;border-radius:0}
 .editor.armed{opacity:0;pointer-events:none}
+/* 客人名字的文字顏色 */
+.editor.rich{white-space:pre;overflow:hidden;color:#5b2c8f;cursor:text;box-sizing:border-box}
+.tc-red{color:#c62828}.tc-blue{color:#1565c0}.tc-green{color:#2e7d32}.tc-orange{color:#e65100}.tc-purple{color:#b0269c}
+#tc-menu{position:fixed;z-index:60;background:#fff;border:1px solid var(--rule);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:6px;display:flex;flex-direction:column;gap:2px;min-width:120px}
+#tc-menu button{border:0;background:none;text-align:left;padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px}
+#tc-menu button:hover{background:#f3f0e8}
+#tc-menu button.reset{font-weight:500;color:var(--ink);border-top:1px solid #eee;border-radius:0 0 6px 6px}
 .menu{position:absolute;z-index:30;background:#fff;border:1px solid #cfc9b9;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:4px;min-width:90px}
 .menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:6px 12px;border-radius:5px;cursor:pointer;font-size:13px;white-space:nowrap}
 .menu button:hover:not(:disabled),.menu button.hl{background:var(--green-soft)}
@@ -813,7 +820,7 @@ function renderSheet() {
         html += `<tr class="r ${o.status === "packed" ? "packed" : ""} ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="w">
           <td class="kd ${kindYellow(o) ? "y" : ""}" data-k="${k}|kind" data-d="${d}"${cs("kind", kindYellow(o))}>${esc(o.kind || "")}</td>
           <td class="lc" data-k="${k}|loc" data-d="${d}"${cs("loc", packed)}>${esc(LOCN[o.loc] || "")}</td>
-          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
+          <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${nameHTML(o.name, nameRuns(o))}</td>
           ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}"${cs("c:" + i.id, packed)}>${fmt((o.contents || {})[i.id])}</td>`).join("")}
           <td class="tg" data-k="${k}|tag" data-d="${d}"${cs("tag", packed)}>${esc(o.tag_text || tagName(o.tag_id))}</td>
           <td class="cd" data-k="${k}|card" data-d="${d}" title="${esc(cardText(o))}"${cs("card", packed)}>${esc(cardText(o))}</td><td></td></tr>`;
@@ -975,11 +982,176 @@ function editorEl() {
   }
   return e;
 }
+/* ---------- 客人名字的文字顏色 ---------- */
+// 存在訂單的 colors 裡：colors.name_text = [[開始, 結束, 顏色], ...]，位置以字為單位（不含結束）
+const TEXT_COLORS = [{ k: "red", t: "紅色" }, { k: "blue", t: "藍色" }, { k: "green", t: "綠色" }, { k: "orange", t: "橘色" }, { k: "purple", t: "紫色" }];
+const TC_KEYS = new Set(TEXT_COLORS.map(c => c.k));
+function nameRuns(o) {
+  const r = o && o.colors && o.colors.name_text;
+  return Array.isArray(r) ? r.filter(x => Array.isArray(x) && x.length === 3 && TC_KEYS.has(x[2])) : [];
+}
+// 每個字的顏色（null＝原色）
+function charColors(chars, runs) {
+  const cols = chars.map(() => null);
+  for (const [s, e, c] of runs) for (let i = Math.max(0, s); i < Math.min(e, chars.length); i++) cols[i] = c;
+  return cols;
+}
+function toRuns(cols) {
+  const out = [];
+  for (let i = 0; i < cols.length; i++) {
+    if (!cols[i]) continue;
+    const last = out[out.length - 1];
+    if (last && last[1] === i && last[2] === cols[i]) last[1] = i + 1; else out.push([i, i + 1, cols[i]]);
+  }
+  return out;
+}
+function segHTML(chars, cols) {
+  let html = "", i = 0;
+  while (i < chars.length) {
+    let j = i; while (j < chars.length && cols[j] === cols[i]) j++;
+    const t = esc(chars.slice(i, j).join(""));
+    html += cols[i] ? `<span class="tc-${cols[i]}" data-c="${cols[i]}">${t}</span>` : t;
+    i = j;
+  }
+  return html;
+}
+function nameHTML(name, runs) {
+  if (!runs.length) return esc(name);
+  const chars = Array.from(String(name || ""));
+  return segHTML(chars, charColors(chars, runs));
+}
+
+// 修改客人名字用的編輯框（可以反白部分文字改顏色）
+function richEl() {
+  let r = $("#rich-editor");
+  if (!r) {
+    r = document.createElement("div"); r.id = "rich-editor"; r.className = "editor rich"; r.hidden = true; r.spellcheck = false;
+    try { r.contentEditable = "plaintext-only"; } catch (e) { r.contentEditable = "true"; }
+    if (r.contentEditable !== "plaintext-only") r.contentEditable = "true";
+    r.addEventListener("keydown", richKey);
+    r.addEventListener("paste", e => {   // 貼上時只貼文字
+      e.preventDefault();
+      const t = (e.clipboardData || window.clipboardData).getData("text").replace(/[\r\n]+/g, " ");
+      document.execCommand("insertText", false, t);
+    });
+    r.addEventListener("blur", () => { if (S.edit && S.edit.rich && !S.edit.closing && !openModals.size) commitEdit(null); });
+    $("#scroll").appendChild(r);
+  }
+  return r;
+}
+// 讀出編輯框裡的每個字和顏色
+function readRich(r) {
+  const chars = [], cols = [];
+  const walk = (node, c) => {
+    for (const n of node.childNodes) {
+      if (n.nodeType === 3) for (const ch of Array.from(n.nodeValue.replace(/[\r\n]/g, ""))) { chars.push(ch); cols.push(c); }
+      else if (n.nodeType === 1) walk(n, n.dataset && TC_KEYS.has(n.dataset.c) ? n.dataset.c : c);
+    }
+  };
+  walk(r, null);
+  return { chars, cols };
+}
+// 反白範圍（以字為單位）
+function richRange(r) {
+  const sel = window.getSelection(); if (!sel.rangeCount) return null;
+  const rg = sel.getRangeAt(0);
+  if (!r.contains(rg.startContainer) || !r.contains(rg.endContainer)) return null;
+  const len = (node, off) => { const pre = document.createRange(); pre.selectNodeContents(r); pre.setEnd(node, off); return Array.from(pre.toString().replace(/[\r\n]/g, "")).length; };
+  return [len(rg.startContainer, rg.startOffset), len(rg.endContainer, rg.endOffset)];
+}
+function richSelect(r, s, e) {
+  const pos = n => {   // 第 n 個字的位置
+    const tw = document.createTreeWalker(r, NodeFilter.SHOW_TEXT);
+    let node, count = 0, last = null;
+    while ((node = tw.nextNode())) {
+      const cps = Array.from(node.nodeValue);
+      if (count + cps.length >= n) return [node, cps.slice(0, n - count).join("").length];
+      count += cps.length; last = node;
+    }
+    return last ? [last, last.nodeValue.length] : [r, 0];
+  };
+  const [sn, so] = pos(s), [en, eo] = pos(e);
+  const rg = document.createRange(); rg.setStart(sn, so); rg.setEnd(en, eo);
+  const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rg);
+}
+function richKey(e) {
+  if (!S.edit || !S.edit.rich || e.isComposing) return;
+  if (e.key === "Enter") { e.preventDefault(); commitEdit(e.shiftKey ? "up" : "down"); }
+  else if (e.key === "Tab") { e.preventDefault(); commitEdit(e.shiftKey ? "left" : "right"); }
+  else if (e.key === "Escape") { e.preventDefault(); closeTcMenu(); cancelEdit(); }
+}
+// 工具列「文字顏色」：只有在修改客人名字時能按
+function tcButtonState() {
+  const b = $("#tc-btn"); if (!b) return;
+  const on = !!(S.edit && S.edit.rich);
+  b.disabled = !on;
+  b.title = on ? "先反白要變色的字，再選顏色" : "雙擊客人格（或選好按 Enter）進入修改，反白文字後再按這裡";
+  if (!on) closeTcMenu();
+}
+function openTcMenu(btn) {
+  if (!S.edit || !S.edit.rich) return;
+  if ($("#tc-menu")) return closeTcMenu();
+  const m = document.createElement("div"); m.id = "tc-menu";
+  m.innerHTML = TEXT_COLORS.map(c => `<button type="button" class="tc-${c.k}" data-tc="${c.k}">${c.t}</button>`).join("")
+    + `<button type="button" class="reset" data-tc="">恢復原色</button>`;
+  document.body.appendChild(m);
+  const br = btn.getBoundingClientRect();
+  m.style.left = Math.min(br.left, window.innerWidth - m.offsetWidth - 8) + "px"; m.style.top = (br.bottom + 4) + "px";
+  m.addEventListener("click", e => { const b = e.target.closest("[data-tc]"); if (b) { applyTextColor(b.dataset.tc || null); closeTcMenu(); } });
+}
+function closeTcMenu() { const m = $("#tc-menu"); if (m) m.remove(); }
+// 按工具列按鈕或顏色選單時，不要讓編輯框失去焦點（反白才不會消失）
+document.addEventListener("mousedown", e => {
+  if (e.target.closest("#tc-btn") || e.target.closest("#tc-menu")) { e.preventDefault(); return; }
+  closeTcMenu();
+}, true);
+function applyTextColor(c) {
+  const r = $("#rich-editor"); if (!r || !S.edit || !S.edit.rich) return;
+  const rg = richRange(r);
+  if (!rg || rg[0] === rg[1]) { toast("請先反白要變色的字"); r.focus(); return; }
+  const [s, e] = rg[0] < rg[1] ? rg : [rg[1], rg[0]];
+  const m = readRich(r);
+  for (let i = s; i < e && i < m.cols.length; i++) m.cols[i] = c;
+  r.innerHTML = segHTML(m.chars, m.cols);
+  r.focus(); richSelect(r, s, e);
+}
+async function saveNameColors(id, oldRuns, runs, date, name) {
+  const o = orderOf(id); if (!o) return false;
+  o.colors = Object.assign({}, o.colors || {}); if (runs.length) o.colors.name_text = runs; else delete o.colors.name_text;
+  render();
+  try {
+    await call("ship_order_name_colors", { p_id: id, p_runs: runs });
+    pushUndo(`出貨表 ${md(date)} ${name} 名字的文字顏色`, async () => {
+      await call("ship_order_name_colors", { p_id: uid("o", id), p_runs: oldRuns });
+    });
+    notify(); await refresh();
+    return true;
+  } catch (e) {
+    if (!(e instanceof Handled)) await alertBox(e.message);
+    S.ordersJson = ""; await refresh();
+    return false;
+  }
+}
+
 // 編輯框放在 #scroll 裡，不會因為畫面重畫而消失
 function placeEditor() {
   const e = editorEl();
   const k = S.edit ? S.edit.key : S.armed;
   const c = k && cellOf(k);
+  const rich = $("#rich-editor");
+  if (S.edit && S.edit.rich && c) {
+    // 修改客人名字：用可以上色的編輯框
+    const r = richEl(), host = $("#scroll"), hr = host.getBoundingClientRect(), cr = c.getBoundingClientRect();
+    e.hidden = true;
+    r.style.left = (cr.left - hr.left + host.scrollLeft) + "px"; r.style.top = (cr.top - hr.top + host.scrollTop) + "px";
+    r.style.minWidth = cr.width + "px"; r.style.height = cr.height + "px"; r.style.lineHeight = (cr.height - 4) + "px";
+    r.hidden = false;
+    if (document.activeElement !== r && !openModals.size && !$("#menu")) r.focus({ preventScroll: true });
+    tcButtonState();
+    return;
+  }
+  if (rich) rich.hidden = true;
+  tcButtonState();
   if (!c) {
     if (S.edit) { S.edit = null; trackPresence(S.cur); }
     S.armed = null; e.hidden = true; return;
