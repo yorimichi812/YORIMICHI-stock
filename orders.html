@@ -92,6 +92,9 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .week .day:first-child{border-left:3px solid var(--grid-strong)}
 .dh{height:26px;display:flex;align-items:center;justify-content:center;font-weight:700;background:#fdf1d6;border-bottom:1px solid var(--grid);font-size:13px}
 .day.sun .dh{background:var(--sun-head);color:#fff}
+.dh-edit{cursor:pointer}
+.dh-edit:hover{text-decoration:underline}
+.dh-cap{margin-left:10px;padding:0 7px;border-radius:999px;background:#fff;color:var(--ink);border:1px solid #e0b949;font-size:12px;font-weight:700}
 table.t{border-collapse:collapse;table-layout:fixed;font-size:12.5px}
 table.t td,table.t th{border:1px dotted var(--grid);height:22px;padding:0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
 table.t th{font-weight:500;font-size:11.5px;color:#4a514b;background:rgba(0,0,0,.025);text-align:center}
@@ -320,6 +323,8 @@ const S = {
   cur: null, anchor: null, sel: new Set(), cells: new Set(), anchorCell: null, drag: null, edit: null, touched: null,
   presence: {}, channel: null, timer: null, syncOk: true, lastSync: null,
   cfgJson: "", ordersJson: "", invJson: "",
+  // 出貨量上限：default 預設上限、margin 差幾盒提醒、days 單天上限、skip 不算的禮盒款式
+  cap: null, capJson: "",
   logs: { f: { from: "", to: "", actor: "", customer: "" }, rows: [], actors: [], done: true, seq: 0 },
   people: []
 };
@@ -441,7 +446,8 @@ async function boot() {
 async function showNotices() {
   let n;
   try { n = await call("ship_notices"); } catch (e) { return; }
-  if (!n || n.seen || (!n.mismatch.length && !n.low.length)) return;
+  const caps = (n && n.cap) || [];
+  if (!n || n.seen || (!n.mismatch.length && !n.low.length && !caps.length)) return;
   const locName = l => l === "factory" ? "工廠" : "門市";
   const md2 = d => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
   const num = v => Number(v).toLocaleString("zh-TW");
@@ -451,7 +457,11 @@ async function showNotices() {
       ${n.mismatch.map(m => `<tr><td>${esc(m.codes)}</td><td>${esc(m.item)}</td><td class="num">${num(m.ship)}</td><td class="num">${num(m.stock)}</td><td class="num" style="color:var(--alert);font-weight:700">${Number(m.stock) - Number(m.ship) > 0 ? "+" : ""}${num(Number(m.stock) - Number(m.ship))}</td></tr>`).join("")}</table>` : "")
     + (n.low.length ? `<h4 style="margin:0 0 6px">撥調低庫存（未來 7 天）</h4>
       <table class="plain" style="width:100%"><tr><th>品項</th><th>地點</th><th>哪天會低於</th><th>當天剩</th><th>安全量</th></tr>
-      ${n.low.map(l => `<tr><td>${esc(l.item)}</td><td>${locName(l.loc)}</td><td>${md2(l.date)}</td><td class="num" style="color:var(--alert);font-weight:700">${num(l.qty)}</td><td class="num">${num(l.min)}</td></tr>`).join("")}</table>` : "");
+      ${n.low.map(l => `<tr><td>${esc(l.item)}</td><td>${locName(l.loc)}</td><td>${md2(l.date)}</td><td class="num" style="color:var(--alert);font-weight:700">${num(l.qty)}</td><td class="num">${num(l.min)}</td></tr>`).join("")}</table>` : "")
+    + (caps.length ? `<h4 style="margin:${n.mismatch.length || n.low.length ? "14px" : "0"} 0 6px">出貨量接近上限</h4>
+      <p class="muted" style="font-size:12.5px;margin:0 0 6px">今天以後的日子，綠底禮盒（有勾「算出貨量」的款式）差 ${num(n.margin)} 盒以內就會列出來。</p>
+      <table class="plain" style="width:100%"><tr><th>日期</th><th>目前盒數</th><th>上限</th><th>還可以接</th></tr>
+      ${caps.map(c => { const left = Number(c.cap) - Number(c.boxes); return `<tr><td>${md2(c.date)}（${WD[dow(c.date)]}）</td><td class="num" style="font-weight:700">${num(c.boxes)}</td><td class="num">${num(c.cap)}</td><td class="num" style="color:var(--alert);font-weight:700">${left < 0 ? `超過 ${num(-left)}` : num(left)}</td></tr>`; }).join("")}</table>` : "");
   const ok = await modal({ title: "今日公告", body, ok: "知道了", noCancel: true, wide: true });
   if (ok) { try { await call("ship_notice_ack"); } catch (e) {} }
 }
@@ -620,12 +630,14 @@ async function loadData(force) {
     let rev;
     if (!S.revOff) { try { const r = await sb.rpc("ship_rev"); if (!r.error) rev = r.data; } catch (e) {} }
     const month = S.month, view = S.view;
-    const [b, o, inv, pg, ts] = await Promise.all([
+    const [b, o, inv, pg, ts, cap] = await Promise.all([
       call("ship_bootstrap"),
       ["sheet", "stats"].includes(view) ? call("ship_month", { p_month: month + "-01" }) : null,
       view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null,
       view === "progress" ? call("ship_progress_list") : null,
-      view === "tasting" ? call("ship_tasting_list") : null
+      view === "tasting" ? call("ship_tasting_list") : null,
+      // 出貨量上限（還沒執行 migration 19 的話就當作沒有設定）
+      ["sheet", "settings"].includes(view) ? call("ship_cap_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null
     ]);
     if (!b.me.role) return boot();
     if (b.me.role !== S.me.role) { S.me = b.me; return boot(); }
@@ -647,6 +659,10 @@ async function loadData(force) {
     if (ts) {
       const j = JSON.stringify(ts);
       if (j !== TS.json) { TS.json = j; TS.rows = ts; changed = true; }
+    }
+    if (cap) {
+      const j = JSON.stringify(cap);
+      if (j !== S.capJson) { S.capJson = j; S.cap = cap; changed = true; }
     }
     if (rev !== undefined) S.rev = rev;
     if (S.view === "logs" && force) await loadLogs(true);
@@ -753,12 +769,24 @@ function greenRows(list) {
 }
 const LOCN = { store: "門市", factory: "工廠" };
 const W = { kd: 38, lc: 44, nm: 128, it: 36, tg: 60, cd: 62, bx: 70 };
+// 量客人名字的寬度（跟表格的字一樣大小）
+let nmCanvas = null;
+function textWidth(t) {
+  if (!nmCanvas) nmCanvas = document.createElement("canvas").getContext("2d");
+  nmCanvas.font = "12.5px " + getComputedStyle(document.body).fontFamily;
+  return nmCanvas.measureText(t || "").width;
+}
 function renderSheet() {
   const ym = S.month, n = daysIn(ym);
   const items = monthItems(ym), boxes = monthBoxes(ym);
-  const wW = W.kd + W.lc + W.nm + items.length * W.it + W.tg + W.cd;
-  const gW = W.nm + boxes.length * W.bx;
-  const width = Math.max(wW, gW + 20);
+  // 每一天的客人欄依那天最長的名字變寬（最少 W.nm，沒有上限）
+  const nmOf = (white, green, edit) => {
+    let w = 0;
+    for (const o of white) w = Math.max(w, textWidth(o.name));
+    for (const o of green) w = Math.max(w, textWidth(greenName(o)));
+    return Math.max(W.nm, Math.ceil(w) + (edit ? 13 : 0) + 12);
+  };
+  const widthOf = nm => Math.max(W.kd + W.lc + nm + items.length * W.it + W.tg + W.cd, nm + boxes.length * W.bx + 20);
   const byDay = {};
   for (const o of S.orders) (byDay[o.ship_date] = byDay[o.ship_date] || []).push(o);
   const edit = canEdit();
@@ -773,10 +801,13 @@ function renderSheet() {
       const white = [...list].sort((a, b) => a.sort_white - b.sort_white || a.id - b.id);
       const green = greenRows(list);
       const sun = dow(d) === 0;
+      const nm = nmOf(white, green, edit), width = widthOf(nm);
+      // 這天另外設了出貨量上限，就在標頭顯示；管理者和客服點標頭可以設定
+      const dayCap = S.cap && S.cap.days ? S.cap.days[d] : undefined;
       html += `<div class="day ${sun ? "sun" : ""}" style="width:${width + 6}px">
-        <div class="dh">${Number(d.slice(5, 7))}月${Number(d.slice(8))}日（${WD[dow(d)]}）${sun ? "　只能店取" : ""}</div>`;
+        <div class="dh ${edit ? "dh-edit" : ""}" ${edit ? `data-a="cap-day" data-d="${d}" title="點一下設定這天的出貨量上限"` : ""}>${Number(d.slice(5, 7))}月${Number(d.slice(8))}日（${WD[dow(d)]}）${sun ? "　只能店取" : ""}${dayCap !== undefined ? `<span class="dh-cap">上限 ${fmt0(dayCap)}</span>` : ""}</div>`;
       // 白底段
-      html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.lc}px"><col style="width:${W.nm}px">${items.map(() => `<col style="width:${W.it}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
+      html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.lc}px"><col style="width:${nm}px">${items.map(() => `<col style="width:${W.it}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
         <tr><th>寄/取</th><th>門市/工廠</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}"${i.header_color ? ` style="background:${colorHex(i.header_color)}"` : ""}>${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
       for (const o of white) {
         const k = `w|${o.id}`;
@@ -799,7 +830,7 @@ function renderSheet() {
       const sumC = items.map(i => list.reduce((a, o) => a + ((o.contents || {})[i.id] || 0), 0));
       html += `<tr class="tot"><td></td><td></td><td>合計</td>${sumC.map(v => `<td class="n">${fmt(v)}</td>`).join("")}<td></td><td></td><td></td></tr></table>`;
       // 綠底段
-      html += `<div class="gsec"><table class="t" style="width:${width}px"><colgroup><col style="width:${W.nm}px">${boxes.map(() => `<col style="width:${W.bx}px">`).join("")}<col></colgroup>
+      html += `<div class="gsec"><table class="t" style="width:${width}px"><colgroup><col style="width:${nm}px">${boxes.map(() => `<col style="width:${W.bx}px">`).join("")}<col></colgroup>
         <tr><th>客人</th>${boxes.map(b => `<th title="${esc(b.name)}">${esc(b.name)}</th>`).join("")}<th></th></tr>`;
       for (const o of green) {
         const k = `g|${o.id}`;
@@ -2396,6 +2427,64 @@ function bomText(id, kind = "box") {
   const txt = (v.lines || []).map(l => { const p = S.cfg.packs.find(x => x.id === l.pack); return p ? `${p.name}×${Number(l.qty)}` : ""; }).filter(Boolean).join("、") || "無";
   return esc(txt) + (v.valid_from > "1900-01-01" ? `<span class="muted">（${md(v.valid_from)} 起）</span>` : "");
 }
+/* ---------------- 出貨量上限 ---------------- */
+// 某一天綠底、有算進出貨量的禮盒款式盒數加總
+function capBoxes(day) {
+  const skip = new Set((S.cap && S.cap.skip) || []);
+  let n = 0;
+  for (const o of S.orders) if (o.ship_date === day)
+    for (const k in (o.boxes || {})) if (!skip.has(Number(k))) n += Number(o.boxes[k]) || 0;
+  return n;
+}
+const capNum = v => { const t = String(v || "").trim(); if (t === "") return null; return /^\d+$/.test(t) ? Number(t) : NaN; };
+// 出貨表點日期標頭：設定這一天的上限，清空就用預設
+async function capDay(day) {
+  if (!canEdit()) return;
+  if (!S.cap) return alertBox("出貨量上限的資料庫還沒更新，請先執行 orders-migration-19。", "還不能設定");
+  const cur = S.cap.days[day], def = S.cap.default;
+  await modal({
+    title: `${Number(day.slice(5, 7))}月${Number(day.slice(8))}日 出貨量上限`,
+    body: `<p class="muted" style="margin:0 0 10px">這天目前 ${fmt0(capBoxes(day))} 盒（只算設定頁有勾選的禮盒款式）。清空就用預設上限（${def === null || def === undefined ? "還沒設定" : fmt0(def) + " 盒"}）。</p>
+      <div class="field"><label class="lbl" for="cap-day">這天的上限（盒）</label><input type="text" id="cap-day" inputmode="numeric" maxlength="6" value="${cur === undefined ? "" : cur}" style="width:100%"></div>`,
+    ok: "儲存",
+    onOpen: w => { const i = $("#cap-day", w); i.focus(); i.select(); },
+    onOk: async ({ root, setErr }) => {
+      const v = capNum($("#cap-day", root).value);
+      if (Number.isNaN(v)) { setErr("請輸入 0 以上的整數，或清空改用預設。"); return false; }
+      try { await call("ship_day_cap_set", { p_day: day, p_cap: v }); }
+      catch (e) { if (!(e instanceof Handled)) setErr(e.message); return false; }
+      notify(); await refresh();
+    }
+  });
+}
+// 設定頁：預設上限和差幾盒
+async function capConfig() {
+  const c = S.cap || { default: null, margin: 50 };
+  await modal({
+    title: "每日出貨量上限",
+    body: `<div class="row2 field"><div><label class="lbl" for="cap-def">預設每日上限（盒）</label><input type="text" id="cap-def" inputmode="numeric" maxlength="6" value="${c.default === null || c.default === undefined ? "" : c.default}" placeholder="不設定" style="width:100%"></div>
+      <div><label class="lbl" for="cap-mar">差幾盒就提醒</label><input type="text" id="cap-mar" inputmode="numeric" maxlength="6" value="${c.margin}" style="width:100%"></div></div>
+      <p class="muted" style="font-size:12.5px;margin:0">例如上限 500、差 50 盒：當天累積到 450 盒，登入時的每日公告就會提醒。預設上限清空＝不提醒（有另外設上限的日子照樣提醒）。</p>`,
+    ok: "儲存",
+    onOpen: w => $("#cap-def", w).focus(),
+    onOk: async ({ root, setErr }) => {
+      const d = capNum($("#cap-def", root).value), m = capNum($("#cap-mar", root).value);
+      if (Number.isNaN(d)) { setErr("預設上限請輸入 0 以上的整數，或清空不設定。"); return false; }
+      if (m === null || Number.isNaN(m)) { setErr("差幾盒請輸入 0 以上的整數。"); return false; }
+      try { await call("ship_cap_config_set", { p_default: d, p_margin: m }); }
+      catch (e) { if (!(e instanceof Handled)) setErr(e.message); return false; }
+      notify(); await refresh();
+    }
+  });
+}
+function capSection() {
+  if (!S.cap) return `<div class="sec-head"><h3>每日出貨量上限</h3></div><p class="muted">資料庫還沒更新，請先執行 orders-migration-19。</p>`;
+  const c = S.cap;
+  return `<div class="sec-head"><h3>每日出貨量上限</h3><button class="btn primary" type="button" data-set="cap">修改</button></div>
+    <p style="margin:0 0 6px">預設每日上限：<b>${c.default === null || c.default === undefined ? "未設定" : fmt0(c.default) + " 盒"}</b>　差 <b>${fmt0(c.margin)}</b> 盒就提醒</p>
+    <p class="muted" style="margin:0 0 4px;font-size:12.5px">只算下面「禮盒款式」有勾「算出貨量」的款式。單一天的上限在出貨表點日期標頭設定。</p>`;
+}
+
 function renderSettings() {
   const ops = (kind, x, list, extra = "") => {
     const i = list.indexOf(x);
@@ -2409,12 +2498,13 @@ function renderSettings() {
   const { items, boxes, tags, packs } = S.cfg;
   return `<div class="page">
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
+    ${capSection()}
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
     ${items.length ? `<table class="plain items"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th>撥調系統使用名稱</th><th></th></tr>
       ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${x.stock_item_id ? esc(stockItemName(x.stock_item_id)) : `<span class="muted">—</span>`}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
     <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
-    ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th><th></th></tr>
-      ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td><td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
+    ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th>${S.cap ? `<th>算出貨量</th>` : ""}<th></th></tr>
+      ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td>${S.cap ? `<td style="text-align:center"><input type="checkbox" data-set="capbox" data-id="${x.id}" aria-label="「${esc(x.name)}」算進出貨量" ${S.cap.skip.includes(x.id) ? "" : "checked"}></td>` : ""}<td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
     <div class="sec-head"><h3>包材</h3><button class="btn primary" type="button" data-set="new" data-kind="pack">新增包材</button></div>
     ${packs.length ? `<table class="plain"><tr><th>名稱</th><th>單位</th><th>安全量</th><th></th></tr>
       ${packs.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(x.unit)}</td><td class="num">${fmt0(x.safety)}</td><td>${ops("pack", x, packs)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有包材。</p>`}
@@ -2566,6 +2656,12 @@ async function settingAction(btn) {
   const nm = x ? (kind === "item" ? `${x.code} ${x.name}` : x.name) : "";
   try {
     if (a === "wizard") return openWizard();
+    if (a === "cap") return capConfig();
+    if (a === "capbox") {
+      try { await call("ship_cap_box_set", { p_id: id, p_count: btn.checked }); }
+      catch (e) { btn.checked = !btn.checked; throw e; }
+      notify(); await refresh(); return;
+    }
     if (a === "new") return editSetting(kind, null);
     if (a === "edit") return editSetting(kind, id);
     if (a === "bom") return editBom(id, "box");
@@ -3012,6 +3108,7 @@ document.addEventListener("click", e => {
   if (act === "st-packed") return setStatus("packed");
   if (act === "st-none") return setStatus("none");
   if (act === "move") return moveDate();
+  if (act === "cap-day") return capDay(a.dataset.d);
   if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : S.view === "tasting" ? tsApplyColor : applyColor);
   if (act === "ts-archive") return tsArchive(true);
   if (act === "ts-unarchive") return tsArchive(false);
