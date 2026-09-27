@@ -73,6 +73,7 @@ input:focus,select:focus{border-color:var(--green);outline:none;box-shadow:0 0 0
 .months button{border:1px solid #cfc9b9;background:#fff;border-radius:7px;padding:4px 10px;cursor:pointer;font-size:13px;font-variant-numeric:tabular-nums}
 .months button.on{background:var(--green);border-color:var(--green);color:#fff}
 .months button.now{font-weight:700}
+.months button.tabs-manage{border-style:dashed;color:var(--soft);margin-left:6px}
 .jump{display:flex;align-items:center;gap:6px;margin-left:6px}
 .jump input{height:30px;font-size:13px}
 .tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -332,6 +333,8 @@ const S = {
   cfgJson: "", ordersJson: "", invJson: "",
   // 出貨量上限：default 預設上限、margin 差幾盒提醒、days 單天上限、skip 不算的禮盒款式
   cap: null, capJson: "",
+  // 大家一起隱藏的月份分頁 ["2026-08", ...]；hiddenOk＝資料庫已經有這個功能
+  hiddenMonths: [], hiddenJson: "", hiddenOk: false,
   logs: { f: { from: "", to: "", actor: "", customer: "" }, rows: [], actors: [], done: true, seq: 0 },
   people: []
 };
@@ -637,14 +640,16 @@ async function loadData(force) {
     let rev;
     if (!S.revOff) { try { const r = await sb.rpc("ship_rev"); if (!r.error) rev = r.data; } catch (e) {} }
     const month = S.month, view = S.view;
-    const [b, o, inv, pg, ts, cap] = await Promise.all([
+    const [b, o, inv, pg, ts, cap, hid] = await Promise.all([
       call("ship_bootstrap"),
       ["sheet", "stats"].includes(view) ? call("ship_month", { p_month: month + "-01" }) : null,
       view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null,
       view === "progress" ? call("ship_progress_list") : null,
       view === "tasting" ? call("ship_tasting_list") : null,
       // 出貨量上限（還沒執行 migration 19 的話就當作沒有設定）
-      ["sheet", "settings"].includes(view) ? call("ship_cap_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null
+      ["sheet", "settings"].includes(view) ? call("ship_cap_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null,
+      // 隱藏的月份分頁（還沒執行 migration 21 的話就當作都不隱藏）
+      ["sheet", "stats", "stock"].includes(view) ? call("ship_hidden_months_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null
     ]);
     if (!b.me.role) return boot();
     if (b.me.role !== S.me.role) { S.me = b.me; return boot(); }
@@ -670,6 +675,10 @@ async function loadData(force) {
     if (cap) {
       const j = JSON.stringify(cap);
       if (j !== S.capJson) { S.capJson = j; S.cap = cap; changed = true; }
+    }
+    if (hid) {
+      const j = JSON.stringify(hid);
+      if (j !== S.hiddenJson) { S.hiddenJson = j; S.hiddenMonths = hid; S.hiddenOk = true; changed = true; }
     }
     if (rev !== undefined) S.rev = rev;
     if (S.view === "logs" && force) await loadLogs(true);
@@ -697,10 +706,14 @@ function renderBar() {
   $("#bar").hidden = !monthViews.includes(S.view);
   if ($("#bar").hidden) { $("#tools").innerHTML = ""; return; }
   const now = S.today.slice(0, 7);
-  const list = []; for (let k = -1; k <= 6; k++) list.push(addMonths(now, k));
+  // 上個月到之後 6 個月，拿掉隱藏的（正在看的月份一定顯示），越新的越靠左
+  const hidden = new Set(S.hiddenMonths || []);
+  const list = monthTabs().filter(ym => !hidden.has(ym) || ym === S.month);
   if (!list.includes(S.month)) list.push(S.month);
-  list.sort();
-  $("#months").innerHTML = list.map(ym => `<button type="button" data-month="${ym}" class="${ym === S.month ? "on" : ""} ${ym === now ? "now" : ""}">${ym.slice(0, 4) !== now.slice(0, 4) ? ym.slice(0, 4) + "年" : ""}${Number(ym.slice(5))}月</button>`).join("");
+  list.sort().reverse();
+  $("#months").innerHTML = list.map(ym => `<button type="button" data-month="${ym}" class="${ym === S.month ? "on" : ""} ${ym === now ? "now" : ""}">${monthLabel(ym)}</button>`).join("")
+    + (canEdit() && S.hiddenOk ? (() => { const n = monthTabs().filter(m => hidden.has(m)).length;
+        return `<button type="button" class="tabs-manage" data-a="tabs-manage" title="勾選要顯示哪些月份（大家一起）">管理分頁${n ? `（隱藏 ${n}）` : ""}</button>`; })() : "");
   $("#jump").value = S.month;
   const tools = $("#tools");
   if (S.view === "sheet" && canEdit()) {
@@ -713,6 +726,28 @@ function renderBar() {
       <button class="btn ghost" type="button" data-a="tcolor" id="tc-btn" disabled><b style="color:#c62828;text-decoration:underline">A</b>文字顏色</button>`;
     tcButtonState();
   } else tools.innerHTML = "";
+}
+// 月份分頁：上個月到之後 6 個月
+function monthTabs() { const now = S.today.slice(0, 7); const l = []; for (let k = -1; k <= 6; k++) l.push(addMonths(now, k)); return l; }
+function monthLabel(ym) { const now = S.today.slice(0, 7); return `${ym.slice(0, 4) !== now.slice(0, 4) ? ym.slice(0, 4) + "年" : ""}${Number(ym.slice(5))}月`; }
+// 管理分頁：勾選要顯示的月份（大家一起）
+async function manageTabs() {
+  if (!canEdit()) return;
+  const months = monthTabs().slice().reverse(), hidden = new Set(S.hiddenMonths || []);
+  await modal({
+    title: "管理分頁",
+    body: `<p class="muted" style="margin:0 0 10px;font-size:12.5px">勾選的月份會顯示在下方的月份按鈕；取消勾選就隱藏，所有人的畫面都一起隱藏。正在看的月份一定會顯示。</p>
+      <div class="mgrid" style="grid-template-columns:repeat(4,1fr)">${months.map(ym => `<label><input type="checkbox" value="${ym}" ${hidden.has(ym) ? "" : "checked"}>${monthLabel(ym)}</label>`).join("")}</div>`,
+    ok: "儲存",
+    onOk: async ({ root, setErr }) => {
+      const hide = [...root.querySelectorAll(".mgrid input")].filter(i => !i.checked).map(i => i.value);
+      try { await call("ship_hidden_months_set", { p_months: months, p_hidden: hide }); }
+      catch (e) { if (!(e instanceof Handled)) setErr(e.message); return false; }
+      S.hiddenMonths = [...new Set([...(S.hiddenMonths || []).filter(m => !months.includes(m)), ...hide])].sort();
+      S.hiddenJson = JSON.stringify(S.hiddenMonths);
+      renderBar(); notify(); await refresh();
+    }
+  });
 }
 function render() {
   renderNav(); renderBar();
@@ -3315,6 +3350,7 @@ document.addEventListener("click", e => {
   if (act === "move") return moveDate();
   if (act === "cap-day") return capDay(a.dataset.d);
   if (act === "tcolor") return openTcMenu(a);
+  if (act === "tabs-manage") return manageTabs();
   if (act === "paint") return openPalette(a, S.view === "progress" ? pgApplyColor : S.view === "tasting" ? tsApplyColor : applyColor);
   if (act === "ts-archive") return tsArchive(true);
   if (act === "ts-unarchive") return tsArchive(false);
