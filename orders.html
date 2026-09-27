@@ -783,7 +783,7 @@ function renderSheet() {
         const packed = o.status === "packed";
         const cs = (f, yellow) => { const own = (o.colors || {})[`w|${f}`]; return own && (!yellow || o.color_keep === true) ? ` style="background:${colorHex(own)}"` : ""; };
         html += `<tr class="r ${o.status === "packed" ? "packed" : ""} ${S.sel.has(o.id) ? "sel" : ""}" data-o="${o.id}" data-d="${d}" data-s="w">
-          <td class="kd ${o.status !== "none" ? "y" : ""}" data-k="${k}|kind" data-d="${d}"${cs("kind", o.status !== "none")}>${esc(o.kind || "")}</td>
+          <td class="kd ${kindYellow(o) ? "y" : ""}" data-k="${k}|kind" data-d="${d}"${cs("kind", kindYellow(o))}>${esc(o.kind || "")}</td>
           <td class="lc" data-k="${k}|loc" data-d="${d}"${cs("loc", packed)}>${esc(LOCN[o.loc] || "")}</td>
           <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${esc(o.name)}</td>
           ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}"${cs("c:" + i.id, packed)}>${fmt((o.contents || {})[i.id])}</td>`).join("")}
@@ -1224,7 +1224,11 @@ function openPalette(btn, onPick = applyColor) {
 }
 document.addEventListener("mousedown", e => { if (!e.target.closest("#palette") && !e.target.closest('[data-a="paint"]')) closePalette(); }, true);
 // 這一格現在是不是被狀態染成黃色
-function isYellow(o, s, f) { return s === "w" && (o.status === "packed" || (f === "kind" && o.status !== "none")); }
+function isYellow(o, s, f) { return s === "w" && (o.status === "packed" || (f === "kind" && kindYellow(o))); }
+// 試吃、三聯單會自動派到門市，不用另外派工作，所以寄/取格不標黃色
+function autoStore(o) { return o.kind === "試吃" || (o.name || "").includes("三聯單"); }
+// 寄/取格要不要因為「已派單」標黃色
+function kindYellow(o) { return o.status !== "none" && !autoStore(o); }
 async function applyColor(color) {
   const cells = [...S.cells].map(parseKey).filter(p => typeof p.o === "number" && p.s !== "st" && orderOf(p.o));
   if (!cells.length) return;
