@@ -103,6 +103,7 @@ table.t td.n{text-align:center;font-variant-numeric:tabular-nums}
 table.t td.nm{text-align:left;color:#5b2c8f}
 table.t td.kd,table.t td.cd,table.t td.tg,table.t td.lc{text-align:center}
 table.t td.lc{font-size:12px}
+table.t td.mc{font-size:11.5px;text-align:left;color:#6b4a1f}
 table.t td.cd{font-size:11.5px}
 table.t td.tg{font-size:11.5px}
 table.t tr.tot td{border-top:2px solid var(--grid-strong);font-weight:700;background:rgba(0,0,0,.03);color:#333}
@@ -210,6 +211,15 @@ table.plain.items .ops{flex-wrap:nowrap}
 .mgrid label.yr{grid-column:1/-1;border:0;justify-content:flex-start;font-weight:700;padding:6px 0 0;cursor:default}
 .radios{display:flex;gap:14px;margin-bottom:6px}
 .radios label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.mgrid-t{border-collapse:collapse;font-size:13px}
+.mgrid-t th,.mgrid-t td{border:1px solid #e6e1d4;padding:4px 6px;text-align:center;white-space:nowrap}
+.mgrid-t th{background:#faf8f2;font-weight:700}
+.mgrid-t tr th:first-child{text-align:left}
+.mgrid-t td.off{background:#f1efe9;color:#b5b0a3}
+.mgrid-t td.nof{text-align:left}
+.mgrid-t td.nof .muted{margin-left:8px;font-size:12px}
+.mgrid-t input.mq{width:56px;text-align:center;padding:3px 4px}
+.mgrid-t input.cb{width:auto}
 .bom-row{display:grid;grid-template-columns:1fr 110px;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #f0ede5}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:8px;font-size:13px;z-index:200}
 
@@ -327,7 +337,7 @@ const COLORS = [
 const colorHex = k => (COLORS.find(x => x.k === k) || {}).c;
 
 const S = {
-  me: null, cfg: { items: [], boxes: [], tags: [], packs: [], bom: [], item_bom: [] }, today: "",
+  me: null, cfg: { items: [], boxes: [], tags: [], packs: [], bom: [], item_bom: [], item_ship_bom: [], merch_items: [], merch_flavors: [], merch_off: [], merch_after: null }, today: "",
   month: "", view: "sheet", orders: [], inv: null,
   cur: null, anchor: null, sel: new Set(), cells: new Set(), anchorCell: null, drag: null, edit: null, touched: null,
   presence: {}, channel: null, timer: null, syncOk: true, lastSync: null,
@@ -640,7 +650,10 @@ function renderSync() {
 }
 
 function applyCfg(b) {
-  const c = { items: b.items, boxes: b.boxes, tags: b.tags, packs: b.packs, bom: b.bom, item_bom: b.item_bom || [] };
+  const c = { items: b.items, boxes: b.boxes, tags: b.tags, packs: b.packs, bom: b.bom, item_bom: b.item_bom || [],
+    // 出貨用包材、周邊商品（還沒執行 migration 24 的話都是空的）
+    item_ship_bom: b.item_ship_bom || [], merch_items: b.merch_items || [], merch_flavors: b.merch_flavors || [],
+    merch_off: b.merch_off || [], merch_after: b.merch_after === undefined ? null : b.merch_after, merchOk: "merch_items" in b };
   const j = JSON.stringify(c);
   if (j === S.cfgJson) return false;
   S.cfgJson = j; S.cfg = c; return true;
@@ -651,7 +664,7 @@ async function loadData(force) {
     let rev;
     if (!S.revOff) { try { const r = await sb.rpc("ship_rev"); if (!r.error) rev = r.data; } catch (e) {} }
     const month = S.month, view = S.view;
-    const [b, o, inv, pg, ts, cap, hid] = await Promise.all([
+    const [b, o, inv, pg, ts, cap, hid, minv] = await Promise.all([
       call("ship_bootstrap"),
       ["sheet", "stats"].includes(view) ? call("ship_month", { p_month: month + "-01" }) : null,
       view === "stock" ? call("ship_inventory", { p_month: month + "-01" }) : null,
@@ -660,7 +673,9 @@ async function loadData(force) {
       // 出貨量上限（還沒執行 migration 19 的話就當作沒有設定）
       ["sheet", "settings"].includes(view) ? call("ship_cap_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null,
       // 隱藏的月份分頁（還沒執行 migration 21 的話就當作都不隱藏）
-      ["sheet", "stats", "stock"].includes(view) ? call("ship_hidden_months_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null
+      ["sheet", "stats", "stock"].includes(view) ? call("ship_hidden_months_get").catch(e => { if (e instanceof Handled) throw e; return null; }) : null,
+      // 周邊商品的庫存（還沒執行 migration 24 的話就沒有）
+      view === "stock" ? call("ship_merch_inventory", { p_month: month + "-01" }).catch(e => { if (e instanceof Handled) throw e; return null; }) : null
     ]);
     if (!b.me.role) return boot();
     if (b.me.role !== S.me.role) { S.me = b.me; return boot(); }
@@ -672,6 +687,7 @@ async function loadData(force) {
       if (j !== S.ordersJson) { S.ordersJson = j; S.orders = o; changed = true; }
     }
     if (inv) {
+      inv.merch = minv || {};
       const j = JSON.stringify(inv);
       if (j !== S.invJson) { S.invJson = j; S.inv = inv; changed = true; }
     }
@@ -786,6 +802,97 @@ function monthBoxes(ym) {
 const cardText = o => o.card_text ? o.card_text : o.card === true ? "○" : o.card === false ? "✕" : "";
 const tagName = id => { const t = S.cfg.tags.find(x => x.id === id); return t ? t.name : ""; };
 
+/* ---------------- 周邊商品 ---------------- */
+// 訂單的 merch：{"品項id-口味id": 數量}，不分口味的口味id是 0
+const merchItemOf = id => S.cfg.merch_items.find(x => x.id === id);
+const merchFlavorOf = id => S.cfg.merch_flavors.find(x => x.id === id);
+const merchOff = (i, f) => S.cfg.merch_off.some(([a, b]) => a === i && b === f);
+function merchParts(key) { const [i, f] = String(key).split("-").map(Number); return { i, f: f || 0 }; }
+// 「草莓周邊組」；不分口味的只有品項名稱
+function merchLabel(key) {
+  const { i, f } = merchParts(key); const it = merchItemOf(i), fl = f ? merchFlavorOf(f) : null;
+  return (fl ? fl.name : "") + (it ? it.name : "（已刪除）");
+}
+// 照設定的品項、口味順序排
+function merchOrder(key) {
+  const { i, f } = merchParts(key);
+  const a = S.cfg.merch_items.findIndex(x => x.id === i), b = f ? S.cfg.merch_flavors.findIndex(x => x.id === f) : -1;
+  return (a < 0 ? 9999 : a) * 10000 + (b < 0 ? (f ? 9999 : 0) : b + 1);
+}
+function merchKeys(m) { return Object.keys(m || {}).filter(k => Number(m[k]) > 0).sort((a, b) => merchOrder(a) - merchOrder(b)); }
+function merchText(m) { return merchKeys(m).map(k => merchLabel(k) + m[k]).join("、"); }
+// 這個月要不要顯示「周邊」格：有周邊品項要出現，或這個月已經有訂單填了周邊
+function merchShown(ym) {
+  return S.cfg.merch_items.some(x => visibleIn(x, ym))
+    || S.orders.some(o => String(o.ship_date).startsWith(ym) && merchKeys(o.merch).length);
+}
+// 點「周邊」格：跳出「品項 × 口味」的表填數量
+async function openMerch(k) {
+  if (!canEdit() || openModals.size) return;
+  const p = parseKey(k); if (p.isNew) return;
+  const o = orderOf(p.o); if (!o) return;
+  const ym = String(o.ship_date).slice(0, 7), cur = o.merch || {};
+  const has = pre => Object.keys(cur).some(x => Number(cur[x]) > 0 && pre(merchParts(x)));
+  const items = S.cfg.merch_items.filter(it => visibleIn(it, ym) || has(q => q.i === it.id));
+  const flavors = S.cfg.merch_flavors.filter(f => !f.hidden || has(q => q.f === f.id));
+  if (!items.length) return alertBox("這個月沒有周邊商品。請先到「設定」→「周邊商品」新增品項，並設定出現月份。", "沒有周邊商品");
+  const inp = key => `<input type="text" inputmode="numeric" maxlength="6" class="mq" data-key="${key}" value="${cur[key] ? cur[key] : ""}">`;
+  const rows = items.map(it => {
+    if (it.no_flavor) return `<tr><th>${esc(it.name)}</th><td colspan="${Math.max(1, flavors.length)}" class="nof">${inp(`${it.id}-0`)}<span class="muted">不分口味</span></td></tr>`;
+    return `<tr><th>${esc(it.name)}</th>${flavors.map(f => {
+      const key = `${it.id}-${f.id}`;
+      return merchOff(it.id, f.id) && !cur[key] ? `<td class="off" title="這個組合不賣">—</td>` : `<td>${inp(key)}</td>`;
+    }).join("") || `<td class="muted">還沒有口味</td>`}</tr>`;
+  }).join("");
+  const next = await modal({
+    title: `${o.name || o.kind || ""}　周邊`, ok: "確定", wide: true,
+    body: `<p class="muted" style="margin:0 0 8px;font-size:12.5px">${md(o.ship_date)} 出貨，填數量就好，不要的留空。庫存表會在出貨那天扣掉。</p>
+      <div style="overflow:auto"><table class="mgrid-t"><tr><th></th>${flavors.map(f => `<th>${esc(f.name)}</th>`).join("")}</tr>${rows}</table></div>`,
+    onOpen: w => { const i = $(".mq", w); if (i) { i.focus(); i.select(); } },
+    onOk: ({ root, setErr }) => {
+      const out = {};
+      for (const i of root.querySelectorAll(".mq")) {
+        const v = i.value.trim(); if (v === "") continue;
+        if (!/^\d+$/.test(v)) { setErr("數量要是 0 以上的整數。"); i.focus(); return false; }
+        if (Number(v) > 0) out[i.dataset.key] = Number(v);
+      }
+      // 小視窗沒列出來的（例如已經下架的）照舊保留
+      for (const x in cur) if (!root.querySelector(`.mq[data-key="${x}"]`) && Number(cur[x]) > 0) out[x] = Number(cur[x]);
+      return out;
+    }
+  });
+  if (!next) return;
+  await saveMerch(o.id, cur, next);
+}
+const sameMerch = (a, b) => JSON.stringify(merchKeys(a).map(k => [k, Number(a[k])])) === JSON.stringify(merchKeys(b).map(k => [k, Number(b[k])]));
+async function saveMerch(id, oldM, newM) {
+  const o = orderOf(id); if (!o) return false;
+  oldM = oldM || {}; newM = newM || {};
+  if (sameMerch(oldM, newM)) return true;
+  const date = o.ship_date, name = o.name || o.kind || "";
+  o.merch = newM; S.ordersJson = ""; render();
+  try {
+    let applied = true;
+    let r = await call("ship_order_merch_set", { p_id: id, p_old: oldM, p_new: newM, p_force: false });
+    if (r && r.conflict) {
+      const force = await modal({ title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
+        body: `<p>「${esc(name)}」的周邊剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(merchText(r.current) || "空白")}</b>。</p><p>要用你填的 <b>${esc(merchText(newM) || "空白")}</b> 蓋掉嗎？</p>` });
+      if (force) r = await call("ship_order_merch_set", { p_id: id, p_old: oldM, p_new: newM, p_force: true });
+      else applied = false;
+    }
+    if (applied) pushUndo(`出貨表 ${md(date)} ${name} 周邊 ${merchText(newM) || "空白"} → ${merchText(oldM) || "空白"}`, async () => {
+      const u = await call("ship_order_merch_set", { p_id: uid("o", id), p_old: newM, p_new: oldM, p_force: false });
+      if (u && u.conflict) return { skip: true, by: u.by };
+    });
+    S.touched = id; notify(); await refresh();
+    return true;
+  } catch (e) {
+    if (!(e instanceof Handled)) await alertBox(e.message);
+    S.ordersJson = ""; await refresh();
+    return false;
+  }
+}
+
 /* =================== 出貨表 =================== */
 // 空白列的「寄/取」格：選了就建立一筆客人欄空白的訂單（試吃、外場等）
 function openNewKindMenu(k, p) {
@@ -823,7 +930,7 @@ function greenRows(list) {
   });
 }
 const LOCN = { store: "門市", factory: "工廠" };
-const W = { kd: 38, lc: 44, nm: 128, it: 36, tg: 60, cd: 62, bx: 70 };
+const W = { kd: 38, lc: 44, nm: 128, it: 36, tg: 60, cd: 62, bx: 70, mc: 160 };
 // 量客人名字的寬度（跟表格的字一樣大小）
 let nmCanvas = null;
 function textWidth(t) {
@@ -842,7 +949,14 @@ function renderSheet() {
   let nameW = 0;
   for (const o of S.orders) if (String(o.ship_date).startsWith(ym)) nameW = Math.max(nameW, textWidth(o.name || o.kind || ""));
   const nm = Math.max(W.nm, Math.ceil(nameW) + (edit ? 13 : 0) + 12);
-  const width = Math.max(W.kd + W.lc + nm + items.length * W.it + W.tg + W.cd, nm + boxes.length * W.bx + 20);
+  // 白底內容物欄位，「周邊」格插在設定的內容物右邊（這個月有周邊要出現才顯示）
+  const cols = items.map(i => ({ t: "item", i }));
+  if (merchShown(ym)) {
+    const at = cols.findIndex(c => c.i.id === S.cfg.merch_after);
+    cols.splice(at >= 0 ? at + 1 : cols.length, 0, { t: "merch" });
+  }
+  const colsW = cols.reduce((a, c) => a + (c.t === "item" ? W.it : W.mc), 0);
+  const width = Math.max(W.kd + W.lc + nm + colsW + W.tg + W.cd, nm + boxes.length * W.bx + 20);
   let html = `<div class="sheet" id="sheet">`;
   for (let start = 1; start <= n; start += 7) {
     const days = []; for (let d = start; d < start + 7 && d <= n; d++) days.push(dstr(ym, d));
@@ -859,8 +973,8 @@ function renderSheet() {
       html += `<div class="day ${sun ? "sun" : ""}" style="width:${width + 6}px">
         <div class="dh ${edit ? "dh-edit" : ""}" ${edit ? `data-a="cap-day" data-d="${d}" title="點一下設定這天的出貨量上限"` : ""}>${Number(d.slice(5, 7))}月${Number(d.slice(8))}日（${WD[dow(d)]}）${sun ? "　只能店取" : ""}${dayCap !== undefined ? `<span class="dh-cap">上限 ${fmt0(dayCap)}</span>` : ""}</div>`;
       // 白底段
-      html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.lc}px"><col style="width:${nm}px">${items.map(() => `<col style="width:${W.it}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
-        <tr><th>寄/取</th><th>門市/工廠</th><th>客人</th>${items.map(i => `<th title="${esc(i.name)}"${i.header_color ? ` style="background:${colorHex(i.header_color)}"` : ""}>${esc(i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
+      html += `<table class="t" style="width:${width}px"><colgroup><col style="width:${W.kd}px"><col style="width:${W.lc}px"><col style="width:${nm}px">${cols.map(c => `<col style="width:${c.t === "item" ? W.it : W.mc}px">`).join("")}<col style="width:${W.tg}px"><col style="width:${W.cd}px"><col></colgroup>
+        <tr><th>寄/取</th><th>門市/工廠</th><th>客人</th>${cols.map(c => c.t === "merch" ? `<th title="點格子填周邊商品的數量">周邊</th>` : `<th title="${esc(c.i.name)}"${c.i.header_color ? ` style="background:${colorHex(c.i.header_color)}"` : ""}>${esc(c.i.code)}</th>`).join("")}<th>吊牌</th><th>卡</th><th></th></tr>`;
       for (const o of white) {
         const k = `w|${o.id}`;
         const packed = o.status === "packed";
@@ -869,18 +983,20 @@ function renderSheet() {
           <td class="kd ${kindYellow(o) ? "y" : ""}" data-k="${k}|kind" data-d="${d}"${cs("kind", kindYellow(o))}>${esc(o.kind || "")}</td>
           <td class="lc" data-k="${k}|loc" data-d="${d}"${cs("loc", packed)}>${esc(LOCN[o.loc] || "")}</td>
           <td class="nm" data-k="${k}|name" data-d="${d}" title="${esc(o.name)}"${cs("name", packed)}>${edit ? `<span class="grip" draggable="true" data-drag="${o.id}">⋮⋮</span>` : ""}${nameHTML(o.name, nameRuns(o))}</td>
-          ${items.map(i => `<td class="n" data-k="${k}|c:${i.id}" data-d="${d}"${cs("c:" + i.id, packed)}>${fmt((o.contents || {})[i.id])}</td>`).join("")}
+          ${cols.map(c => c.t === "merch"
+            ? `<td class="mc" data-k="${k}|merch" data-d="${d}" title="${esc(merchText(o.merch))}"${cs("merch", packed)}>${esc(merchText(o.merch))}</td>`
+            : `<td class="n" data-k="${k}|c:${c.i.id}" data-d="${d}"${cs("c:" + c.i.id, packed)}>${fmt((o.contents || {})[c.i.id])}</td>`).join("")}
           <td class="tg" data-k="${k}|tag" data-d="${d}"${cs("tag", packed)}>${esc(o.tag_text || tagName(o.tag_id))}</td>
           <td class="cd" data-k="${k}|card" data-d="${d}" title="${esc(cardText(o))}"${cs("card", packed)}>${esc(cardText(o))}</td><td></td></tr>`;
       }
       if (edit) {
         const k = `w|new:${d}`;
         html += `<tr class="r new" data-o="new:${d}" data-d="${d}" data-s="w"><td data-k="${k}|kind" data-d="${d}"></td><td data-k="${k}|loc" data-d="${d}"></td><td class="nm" data-k="${k}|name" data-d="${d}"></td>
-          ${items.map(i => `<td data-k="${k}|c:${i.id}" data-d="${d}"></td>`).join("")}<td data-k="${k}|tag" data-d="${d}"></td><td data-k="${k}|card" data-d="${d}"></td><td></td></tr>`;
+          ${cols.map(c => `<td data-k="${k}|${c.t === "merch" ? "merch" : "c:" + c.i.id}" data-d="${d}"></td>`).join("")}<td data-k="${k}|tag" data-d="${d}"></td><td data-k="${k}|card" data-d="${d}"></td><td></td></tr>`;
       }
-      for (let i = white.length + (edit ? 1 : 0); i < maxW; i++) html += `<tr class="fill"><td colspan="${items.length + 6}">&nbsp;</td></tr>`;
-      const sumC = items.map(i => list.reduce((a, o) => a + ((o.contents || {})[i.id] || 0), 0));
-      html += `<tr class="tot"><td></td><td></td><td>合計</td>${sumC.map(v => `<td class="n">${fmt(v)}</td>`).join("")}<td></td><td></td><td></td></tr></table>`;
+      for (let i = white.length + (edit ? 1 : 0); i < maxW; i++) html += `<tr class="fill"><td colspan="${cols.length + 6}">&nbsp;</td></tr>`;
+      const sumC = cols.map(c => c.t === "merch" ? null : list.reduce((a, o) => a + ((o.contents || {})[c.i.id] || 0), 0));
+      html += `<tr class="tot"><td></td><td></td><td>合計</td>${sumC.map(v => v === null ? `<td></td>` : `<td class="n">${fmt(v)}</td>`).join("")}<td></td><td></td><td></td></tr></table>`;
       // 綠底段
       html += `<div class="gsec"><table class="t" style="width:${width}px"><colgroup><col style="width:${nm}px">${boxes.map(() => `<col style="width:${W.bx}px">`).join("")}<col></colgroup>
         <tr><th>客人</th>${boxes.map(b => `<th title="${esc(b.name)}">${esc(b.name)}</th>`).join("")}<th></th></tr>`;
@@ -944,6 +1060,7 @@ function orderValue(o, f) {
   if (f === "tag") return o.tag_text || o.tag_id || null;
   if (f.startsWith("c:")) return (o.contents || {})[f.slice(2)] || null;
   if (f.startsWith("b:")) return (o.boxes || {})[f.slice(2)] || null;
+  if (f === "merch") return o.merch && Object.keys(o.merch).length ? o.merch : null;
   return null;
 }
 
@@ -1237,6 +1354,7 @@ function startEdit(k, cardText) {
   if (!canEdit()) return;
   const p = parseKey(k);
   if (p.s !== "st") {
+    if (p.f === "merch") return p.isNew ? setCur(k.replace(/\|[^|]+$/, "|name")) : openMerch(k);
     if (p.isNew && p.f === "kind") return openMenu(k);
     if (p.isNew && p.f !== "name") return setCur(k.replace(/\|[^|]+$/, "|name"));
     if (["kind", "loc", "card", "tag"].includes(p.f) && !((p.f === "card" || p.f === "tag") && cardText)) return openMenu(k);
@@ -1415,6 +1533,7 @@ async function clearCell(k) {
   if (p.isNew) return;
   const o = orderOf(p.o); if (!o) return;
   if (p.f === "name") return saveName(p, { old: o.name, key: k }, "");
+  if (p.f === "merch") return saveMerch(o.id, o.merch || {}, {});
   const old = orderValue(o, p.f);
   if (old === null) return;
   if (p.f === "loc") {
@@ -1693,10 +1812,11 @@ document.addEventListener("mouseup", () => {
   const d = S.drag; S.drag = null; if (!d || d.moved || d.mod) return;
   const p = parseKey(d.start);
   if (canEdit() && ["kind", "loc", "card", "tag"].includes(p.f) && (!p.isNew || p.f === "kind") && S.cur === d.start) openMenu(d.start);
+  if (canEdit() && p.f === "merch" && !p.isNew && S.cur === d.start) openMerch(d.start);
 });
 document.addEventListener("dblclick", e => {
   const td = e.target.closest && e.target.closest("td[data-k]"); if (!td) return;
-  if (["kind", "loc", "card", "tag"].includes(parseKey(td.dataset.k).f)) return;
+  if (["kind", "loc", "card", "tag", "merch"].includes(parseKey(td.dataset.k).f)) return;
   startEdit(S.cur || td.dataset.k);
 });
 document.addEventListener("keydown", e => {
@@ -2569,9 +2689,10 @@ function renderStats() {
 }
 
 /* =================== 庫存表 =================== */
+const invKey = kind => kind === "item" ? "items" : kind === "merch" ? "merch" : "packs";
 function stockValue(o, f) {
   const [kind, id] = o.split(":"); const d = Number(f.slice(8));
-  const rec = S.inv && S.inv[kind === "item" ? "items" : "packs"][id];
+  const rec = S.inv && (S.inv[invKey(kind)] || {})[id];
   return rec && rec.make[d] ? rec.make[d] : null;
 }
 function renderStock() {
@@ -2594,8 +2715,19 @@ function renderStock() {
     headW.push(`<th colspan="2" class="day-h wd ${cls}">週${WD[dow(ds)]}</th>`);
     head2.push(`<th class="mkh">%MK%</th><th class="day-h">剩餘</th>`);
   }
+  // 周邊商品：一個組合一列（品項順序、口味順序）；這個月不出現、不賣、下架的口味，有進出才列
+  const minv = S.inv.merch || {}, busy = r => r && (Number(r.open) !== 0 || Object.keys(r.make).length || Object.keys(r.use).length);
+  const merchRows = [];
+  for (const it of S.cfg.merch_items) {
+    const fl = it.no_flavor ? [null] : S.cfg.merch_flavors;
+    for (const f of fl) {
+      const key = `${it.id}-${f ? f.id : 0}`;
+      const show = visibleIn(it, ym) && (!f || (!f.hidden && !merchOff(it.id, f.id)));
+      if (show || busy(minv[key])) merchRows.push({ id: key, name: f ? `${it.name}－${f.name}` : it.name, unit: it.unit, safety: it.safety });
+    }
+  }
   const row = (x, kind, idx) => {
-    const r = S.inv[kind === "item" ? "items" : "packs"][x.id];
+    const r = S.inv[invKey(kind)][x.id] || { open: 0, make: {}, use: {} };
     let run = Number(r.open);
     let cells = "";
     for (let d = 1; d <= n; d++) {
@@ -2603,7 +2735,7 @@ function renderStock() {
       run += mk - us;
       const low = run < x.safety;
       const k = `st|${kind}:${x.id}|${dstr(ym, d)}`;
-      cells += `<td class="mk" ${edit ? `data-k="${k}"` : ""} data-d="${dstr(ym, d)}">${mk ? fmt0(mk) : ""}</td><td class="rm ${low ? "low" : ""}" title="${us ? (kind === "item" ? "當天訂單用掉 " : "當天出貨與製作用掉 ") + us : ""}">${fmt0(run)}</td>`;
+      cells += `<td class="mk" ${edit ? `data-k="${k}"` : ""} data-d="${dstr(ym, d)}">${mk ? fmt0(mk) : ""}</td><td class="rm ${low ? "low" : ""}" title="${us ? (kind === "item" ? "當天訂單用掉 " : kind === "merch" ? "當天訂單賣掉 " : "當天出貨與製作用掉 ") + us : ""}">${fmt0(run)}</td>`;
     }
     const label = kind === "item" ? `${esc(x.code)}　${esc(x.name)}` : esc(x.name);
     return `<tr class="r ${["", "z1", "", "z2", "", "z3"][idx % 6]}"><td class="name">${label}<span class="unit">${esc(x.unit)}</span></td><td class="open">${fmt0(r.open)}</td>${cells}</tr>`;
@@ -2620,6 +2752,9 @@ function renderStock() {
       <tr class="sec"><td class="name">包材</td><td colspan="${n * 2 + 1}"></td></tr>
       <tr class="subh"><td class="name"></td><td class="open"></td>${"<td>進貨</td><td class='rm'>剩餘</td>".repeat(n)}</tr>
       ${packs.map((x, i) => row(x, "pack", i)).join("") || `<tr><td class="name muted">還沒有包材</td><td colspan="${n * 2 + 1}"></td></tr>`}
+      ${merchRows.length ? `<tr class="sec"><td class="name">周邊商品</td><td colspan="${n * 2 + 1}"></td></tr>
+      <tr class="subh"><td class="name"></td><td class="open"></td>${"<td>進貨</td><td class='rm'>剩餘</td>".repeat(n)}</tr>
+      ${merchRows.map((x, i) => row(x, "merch", i)).join("")}` : ""}
     </tbody></table></div>`;
   paintCursor(); placeEditor();
 }
@@ -2629,19 +2764,23 @@ async function saveStock(p, ed, raw) {
   const old = Number(ed.old || 0);
   if (nv === old) return true;
   const [kind, id] = p.o.split(":");
+  // 周邊商品用自己的函式（id 是「品項id-口味id」）
+  const set = (o2, n2, force) => kind === "merch"
+    ? call("ship_merch_stock_set", { p_item: merchParts(id).i, p_flavor: merchParts(id).f, p_day: p.f, p_old: o2, p_new: n2, p_force: force })
+    : call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: o2, p_new: n2, p_force: force });
   try {
     let applied = true;
-    let r = await call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: old, p_new: nv, p_force: false });
+    let r = await set(old, nv, false);
     if (r && r.conflict) {
       const force = await modal({ title: "這格剛被改過", ok: "用我的蓋掉", cancel: "保留對方的",
         body: `<p>這一格剛被 <b>${esc(r.by || "別人")}</b> 改成 <b>${esc(r.current)}</b>。</p><p>要用你輸入的 <b>${esc(nv)}</b> 蓋掉嗎？</p>` });
-      if (force) await call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: old, p_new: nv, p_force: true });
+      if (force) await set(old, nv, true);
       else applied = false;
     }
     if (applied) {
-      const x = (kind === "item" ? S.cfg.items : S.cfg.packs).find(v => v.id === Number(id));
+      const x = kind === "merch" ? { name: merchLabel(id) } : (kind === "item" ? S.cfg.items : S.cfg.packs).find(v => v.id === Number(id));
       pushUndo(`庫存表 ${md(p.f)} ${x ? (x.code || x.name) : ""} ${kind === "item" ? "製作" : "進貨"} ${nv} → ${old}`, async () => {
-        const u = await call("ship_stock_set", { p_kind: kind, p_ref: Number(id), p_day: p.f, p_old: nv, p_new: old, p_force: false });
+        const u = await set(nv, old, false);
         if (u && u.conflict) return { skip: true, by: u.by };
       });
     }
@@ -2667,6 +2806,7 @@ function monthsText(m) {
 }
 function hiddenBadge(x) { return x.hidden_from ? `<span class="tag-off">${Number(x.hidden_from.slice(5))}月起下架</span>` : x.hidden ? `<span class="tag-off">已下架</span>` : ""; }
 function bomVersions(kind, id) {
+  if (kind === "iship") return S.cfg.item_ship_bom.filter(b => b.item_id === id).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1);
   return kind === "item"
     ? S.cfg.item_bom.filter(b => b.item_id === id).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1)
     : S.cfg.bom.filter(b => b.box_id === id).sort((a, b) => a.valid_from < b.valid_from ? -1 : 1);
@@ -2736,6 +2876,114 @@ function capSection() {
     <p class="muted" style="margin:0 0 4px;font-size:12.5px">只算下面「禮盒款式」有勾「算出貨量」的款式。單一天的上限在出貨表點日期標頭設定。</p>`;
 }
 
+/* ---------------- 設定：周邊商品 ---------------- */
+function merchSection() {
+  if (!S.cfg.merchOk) return `<div class="sec-head"><h3>周邊商品</h3></div><p class="muted">資料庫還沒更新，請先執行 orders-migration-24。</p>`;
+  const { merch_items: mi, merch_flavors: mf } = S.cfg;
+  const mops = (mk, x, list) => {
+    const i = list.indexOf(x), off = mk === "item" ? !!x.hidden_from : x.hidden;
+    return `<div class="ops"><button type="button" data-set="m-edit" data-mk="${mk}" data-id="${x.id}">編輯</button>
+      <button type="button" data-set="m-up" data-mk="${mk}" data-id="${x.id}" ${i === 0 ? "disabled" : ""} aria-label="往上">↑</button>
+      <button type="button" data-set="m-down" data-mk="${mk}" data-id="${x.id}" ${i === list.length - 1 ? "disabled" : ""} aria-label="往下">↓</button>
+      <button type="button" data-set="${off ? "m-show" : "m-hide"}" data-mk="${mk}" data-id="${x.id}">${off ? "重新上架" : "下架"}</button>
+      <button type="button" class="del" data-set="m-del" data-mk="${mk}" data-id="${x.id}">刪除</button></div>`;
+  };
+  const flavored = mi.filter(x => !x.no_flavor);
+  const after = S.cfg.merch_after;
+  return `<div class="sec-head"><h3>周邊商品</h3><div style="display:flex;gap:6px"><button class="btn primary" type="button" data-set="m-new" data-mk="item">新增品項</button><button class="btn primary" type="button" data-set="m-new" data-mk="flavor">新增口味</button></div></div>
+    <p class="muted" style="margin:0 0 8px">用「品項 × 口味」組合。訂單白底的「周邊」格點開填數量，庫存表的「周邊商品」區會在出貨那天扣掉，進貨在庫存表自己打。</p>
+    <h4 style="margin:10px 0 6px">品項</h4>
+    ${mi.length ? `<table class="plain"><tr><th>名稱</th><th>單位</th><th>安全量</th><th>出現月份</th><th>口味</th><th></th></tr>
+      ${mi.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(x.unit)}</td><td class="num">${fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_flavor ? "不分口味" : "分口味"}</td><td>${mops("item", x, mi)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有周邊品項。</p>`}
+    <h4 style="margin:14px 0 6px">口味</h4>
+    ${mf.length ? `<table class="plain"><tr><th>名稱</th><th></th></tr>
+      ${mf.map(x => `<tr class="${x.hidden ? "off" : ""}"><td>${esc(x.name)}${x.hidden ? `<span class="tag-off">已下架</span>` : ""}</td><td>${mops("flavor", x, mf)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有口味。</p>`}
+    ${flavored.length && mf.length ? `<h4 style="margin:14px 0 6px">哪些組合有賣</h4>
+      <p class="muted" style="margin:0 0 6px;font-size:12.5px">打勾＝有賣；取消勾選＝這個組合不賣，填訂單時會變灰色、庫存表也不列出來。</p>
+      <div style="overflow:auto"><table class="mgrid-t"><tr><th></th>${mf.map(f => `<th>${esc(f.name)}</th>`).join("")}</tr>
+      ${flavored.map(it => `<tr><th>${esc(it.name)}</th>${mf.map(f => `<td><input type="checkbox" class="cb" data-set="m-off" data-item="${it.id}" data-flavor="${f.id}" aria-label="${esc(f.name + it.name)}" ${merchOff(it.id, f.id) ? "" : "checked"}></td>`).join("")}</tr>`).join("")}</table></div>` : ""}
+    <h4 style="margin:14px 0 6px">「周邊」格的位置</h4>
+    <label>出貨表白底的「周邊」格放在
+      <select id="merch-after">
+        <option value="" ${after ? "" : "selected"}>所有內容物後面</option>
+        ${S.cfg.items.filter(i => !i.hidden_from || i.id === after).map(i => `<option value="${i.id}" ${i.id === after ? "selected" : ""}>${esc(i.code)}　${esc(i.name)}</option>`).join("")}
+      </select> 的右邊</label>
+    <p class="muted" style="margin:4px 0 0;font-size:12.5px">那個月沒有周邊商品要出現，「周邊」格就不會顯示。</p>`;
+}
+async function merchAfterSet(v) {
+  try { await call("ship_merch_after_set", { p_item: v ? Number(v) : null }); notify(); await refresh(); toast("已更新「周邊」格的位置"); }
+  catch (e) { if (!(e instanceof Handled)) await alertBox(e.message); await refresh(); }
+}
+// 新增或編輯周邊品項
+async function editMerchItem(id) {
+  const x = id ? merchItemOf(id) : null;
+  await modal({
+    title: x ? `編輯周邊品項「${x.name}」` : "新增周邊品項", ok: "儲存", wide: true,
+    body: `<div class="row2 field"><div><label class="lbl" for="mi-name">名稱</label><input type="text" id="mi-name" maxlength="30" value="${esc(x ? x.name : "")}" style="width:100%" placeholder="例如：周邊組"></div>
+      <div><label class="lbl" for="mi-unit">單位</label><input type="text" id="mi-unit" maxlength="10" value="${esc(x ? x.unit : "")}" style="width:100%" placeholder="例如：組"></div></div>
+      <div class="row2 field"><div><label class="lbl" for="mi-safety">安全量（低於就在庫存表標紅）</label><input type="text" inputmode="numeric" id="mi-safety" maxlength="6" value="${x ? x.safety : 0}" style="width:100%"></div>
+      <div><span class="lbl">口味</span><label style="display:flex;align-items:center;gap:6px;margin-top:6px"><input type="checkbox" id="mi-nof" ${x && x.no_flavor ? "checked" : ""}>不分口味（例如引索貼、提袋）</label></div></div>
+      <div class="field"><span class="lbl">出現月份</span>
+      <div class="radios"><label><input type="radio" name="mi-mm" value="all" ${!x || !x.months ? "checked" : ""}>所有月份</label>
+      <label><input type="radio" name="mi-mm" value="some" ${x && x.months ? "checked" : ""}>只在選定的月份</label></div>
+      <div class="mgrid" id="mi-months" ${!x || !x.months ? "hidden" : ""}>${monthPicker(x && x.months)}</div></div>`,
+    onOpen: w => {
+      w.querySelectorAll('input[name="mi-mm"]').forEach(r => r.onchange = () => { $("#mi-months", w).hidden = $('input[name="mi-mm"]:checked', w).value === "all"; });
+      $("#mi-name", w).focus();
+    },
+    onOk: async ({ root, setErr }) => {
+      const data = { name: $("#mi-name", root).value.trim(), unit: $("#mi-unit", root).value.trim(), no_flavor: $("#mi-nof", root).checked };
+      if (!data.name) { setErr("請輸入名稱。"); return false; }
+      const sf = $("#mi-safety", root).value.trim();
+      if (sf !== "" && !/^\d+$/.test(sf)) { setErr("安全量要是 0 以上的整數。"); return false; }
+      data.safety = Number(sf || 0);
+      if ($('input[name="mi-mm"]:checked', root).value === "some") {
+        data.months = [...root.querySelectorAll("#mi-months input:checked")].map(i => i.value);
+        if (!data.months.length) { setErr("請至少勾選一個月份，或選「所有月份」。"); return false; }
+      } else data.months = null;
+      try { await call("ship_merch_save", { p_kind: "item", p_id: x ? x.id : null, p_data: data }); }
+      catch (e) { if (!(e instanceof Handled)) setErr(e.message); return false; }
+      notify(); await refresh();
+    }
+  });
+}
+async function merchSettingAction(btn) {
+  const a = btn.dataset.set, mk = btn.dataset.mk, id = btn.dataset.id ? Number(btn.dataset.id) : null;
+  const list = mk === "item" ? S.cfg.merch_items : S.cfg.merch_flavors;
+  const x = id ? list.find(v => v.id === id) : null;
+  const what = mk === "item" ? "周邊品項" : "口味";
+  try {
+    if (a === "m-off") {
+      const it = Number(btn.dataset.item), f = Number(btn.dataset.flavor);
+      try { await call("ship_merch_off_set", { p_item: it, p_flavor: f, p_off: !btn.checked }); }
+      catch (e) { btn.checked = !btn.checked; throw e; }
+      notify(); await refresh(); return;
+    }
+    if (a === "m-new" || a === "m-edit") {
+      if (mk === "item") return editMerchItem(a === "m-edit" ? id : null);
+      const nv = await promptBox(x ? `改口味「${x.name}」的名稱` : "新增口味", "口味名稱", x ? x.name : "", "例如：草莓、三色草莓、櫻桃");
+      if (!nv || (x && nv === x.name)) return;
+      await call("ship_merch_save", { p_kind: "flavor", p_id: x ? x.id : null, p_data: { name: nv } });
+    } else if (a === "m-up" || a === "m-down") {
+      const ids = list.map(v => v.id); const i = ids.indexOf(id); const j = a === "m-up" ? i - 1 : i + 1;
+      if (j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]];
+      await call("ship_merch_reorder", { p_kind: mk, p_ids: ids });
+    } else if (a === "m-hide") {
+      const ok = await confirmBox("下架", mk === "item"
+        ? `「${x.name}」從這個月起不再顯示，之前的月份照樣看得到。下次檔期可以再「重新上架」，或在「編輯」加上新的出現月份，剩下的庫存會接著算。`
+        : `口味「${x.name}」下架後，填訂單時不會再出現，庫存表也不再列出（有進出的月份照樣列出）。之後可以再重新上架。`, "下架");
+      if (!ok) return;
+      await call("ship_merch_hide", { p_kind: mk, p_id: id, p_hide: true });
+    } else if (a === "m-show") {
+      await call("ship_merch_hide", { p_kind: mk, p_id: id, p_hide: false });
+    } else if (a === "m-del") {
+      if (!await confirmBox("刪除", `確定刪除${what}「${x.name}」？`, "刪除", true)) return;
+      await call("ship_merch_delete", { p_kind: mk, p_id: id });
+    }
+    notify(); await refresh();
+  } catch (e) { if (!(e instanceof Handled)) await alertBox(e.message, a === "m-hide" ? "不能下架" : a === "m-del" ? "不能刪除" : "無法完成"); }
+}
+
 function renderSettings() {
   const ops = (kind, x, list, extra = "") => {
     const i = list.indexOf(x);
@@ -2751,14 +2999,15 @@ function renderSettings() {
     <h2>設定</h2><p class="muted">欄位順序就是出貨表和庫存表上的順序。已經有訂單或紀錄用到的項目不能刪除，不再使用請按「下架」。</p>
     ${capSection()}
     <div class="sec-head"><h3>內容物</h3><button class="btn primary" type="button" data-set="new" data-kind="item">新增內容物</button></div>
-    ${items.length ? `<table class="plain items"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th><th>撥調系統使用名稱</th><th></th></tr>
-      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td><td>${x.stock_item_id ? esc(stockItemName(x.stock_item_id)) : `<span class="muted">—</span>`}</td><td>${ops("item", x, items, x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
+    ${items.length ? `<table class="plain items"><tr><th>代號（出貨表）</th><th>全名（庫存表）</th><th>單位</th><th>安全量</th><th>出現月份</th><th>製作用包材</th>${S.cfg.merchOk ? `<th>出貨用包材</th>` : ""}<th>撥調系統使用名稱</th><th></th></tr>
+      ${items.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td><b style="padding:2px 8px;border-radius:5px;${x.header_color ? `background:${colorHex(x.header_color)}` : ""}">${esc(x.code)}</b></td><td>${esc(x.name)}${hiddenBadge(x)}${x.no_stock ? `<span class="tag-off">不計算庫存</span>` : ""}</td><td>${esc(x.unit)}</td><td class="num">${x.no_stock ? "—" : fmt0(x.safety)}</td><td>${esc(monthsText(x.months))}</td><td>${x.no_stock ? `<span class="muted">—</span>` : bomText(x.id, "item")}</td>${S.cfg.merchOk ? `<td>${bomText(x.id, "iship")}</td>` : ""}<td>${x.stock_item_id ? esc(stockItemName(x.stock_item_id)) : `<span class="muted">—</span>`}</td><td>${ops("item", x, items, (x.no_stock ? "" : `<button type="button" data-set="ibom" data-id="${x.id}">製作用包材</button>`) + (S.cfg.merchOk ? `<button type="button" data-set="iship" data-id="${x.id}">出貨用包材</button>` : ""))}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有內容物。</p>`}
     <div class="sec-head"><h3>禮盒款式</h3><button class="btn primary" type="button" data-set="wizard">新增禮盒（引導）</button></div>
     ${boxes.length ? `<table class="plain"><tr><th>名稱</th><th>出現月份</th><th>包材清單</th>${S.cap ? `<th>算出貨量</th>` : ""}<th></th></tr>
       ${boxes.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(monthsText(x.months))}</td><td>${bomText(x.id)}</td>${S.cap ? `<td style="text-align:center"><input type="checkbox" data-set="capbox" data-id="${x.id}" aria-label="「${esc(x.name)}」算進出貨量" ${S.cap.skip.includes(x.id) ? "" : "checked"}></td>` : ""}<td>${ops("box", x, boxes, `<button type="button" data-set="bom" data-id="${x.id}">包材清單</button>`)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有禮盒款式。</p>`}
     <div class="sec-head"><h3>包材</h3><button class="btn primary" type="button" data-set="new" data-kind="pack">新增包材</button></div>
     ${packs.length ? `<table class="plain"><tr><th>名稱</th><th>單位</th><th>安全量</th><th></th></tr>
       ${packs.map(x => `<tr class="${x.hidden_from ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${esc(x.unit)}</td><td class="num">${fmt0(x.safety)}</td><td>${ops("pack", x, packs)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有包材。</p>`}
+    ${merchSection()}
     <div class="sec-head"><h3>吊牌選項</h3><button class="btn primary" type="button" data-set="new" data-kind="tag">新增吊牌選項</button></div>
     ${tags.length ? `<table class="plain"><tr><th>名稱</th><th></th></tr>
       ${tags.map(x => `<tr class="${x.hidden ? "off" : ""}"><td>${esc(x.name)}${hiddenBadge(x)}</td><td>${ops("tag", x, tags)}</td></tr>`).join("")}</table>` : `<p class="muted">還沒有吊牌選項。</p>`}
@@ -2853,18 +3102,21 @@ async function askResync(itemId) {
 }
 const stockItemName = id => { const s = (S.stockItems || []).find(v => v.id === id); return s ? s.name : "（撥調品項已刪除）"; };
 async function editBom(boxId, kind = "box") {
-  const src = kind === "item" ? S.cfg.items.find(b => b.id === boxId) : S.cfg.boxes.find(b => b.id === boxId);
+  const isItem = kind === "item" || kind === "iship";   // iship：內容物的出貨用包材
+  const src = isItem ? S.cfg.items.find(b => b.id === boxId) : S.cfg.boxes.find(b => b.id === boxId);
   if (!src) return;
-  const box = { name: kind === "item" ? `${src.code} ${src.name}` : src.name, unit: kind === "item" ? (src.unit || "個") : "盒" };
+  const box = { name: isItem ? `${src.code} ${src.name}` : src.name, unit: isItem ? (src.unit || "個") : "盒" };
   const vs = bomVersions(kind, boxId);
   const curV = vs[vs.length - 1];
   const cur = {}; (curV ? curV.lines : []).forEach(l => cur[l.pack] = Number(l.qty));
   const packs = S.cfg.packs.filter(p => !p.hidden_from || cur[p.id]);
   if (!packs.length) { await alertBox("還沒有包材。請先在「包材」新增外盒、提袋、緞帶這些品項，再回來設定清單。", "還沒有包材"); return; }
   const lines = await modal({
-    title: `「${box.name}」的${kind === "item" ? "製作用" : ""}包材清單`, ok: "儲存清單", wide: true,
+    title: `「${box.name}」的${kind === "item" ? "製作用" : kind === "iship" ? "出貨用" : ""}包材清單`, ok: "儲存清單", wide: true,
     body: `<p class="muted">${kind === "item"
         ? `做 1 ${esc(box.unit)}「${esc(box.name)}」會用到哪些包材、各幾個，在製作那天扣掉。不用的留空。`
+        : kind === "iship"
+        ? `訂單白底「${esc(src.code)}」打 1，出貨時會用到哪些包材、各幾個，在出貨那天扣掉。不用的留空。`
         : `一盒「${esc(box.name)}」會用到哪些包材、各幾個，在出貨那天扣掉。不用的留空。`}</p>
       ${packs.map(p => `<div class="bom-row"><span>${esc(p.name)}<span class="muted" style="font-size:12px;margin-left:4px">${esc(p.unit)}</span></span>
         <input type="number" min="0" step="any" data-pack="${p.id}" value="${cur[p.id] || ""}"></div>`).join("")}`,
@@ -2895,6 +3147,7 @@ async function editBom(boxId, kind = "box") {
   }
   try {
     if (kind === "item") await call("ship_item_bom_save", { p_item: boxId, p_lines: lines, p_mode: mode, p_from: from });
+    else if (kind === "iship") await call("ship_item_ship_bom_save", { p_item: boxId, p_lines: lines, p_mode: mode, p_from: from });
     else await call("ship_bom_save", { p_box: boxId, p_lines: lines, p_mode: mode, p_from: from });
     notify(); await refresh(); toast("包材清單已儲存");
   }
@@ -2917,6 +3170,8 @@ async function settingAction(btn) {
     if (a === "edit") return editSetting(kind, id);
     if (a === "bom") return editBom(id, "box");
     if (a === "ibom") return editBom(id, "item");
+    if (a === "iship") return editBom(id, "iship");
+    if (a.startsWith("m-")) return merchSettingAction(btn);
     if (a === "up" || a === "down") {
       const ids = list.map(v => v.id); const i = ids.indexOf(id); const j = a === "up" ? i - 1 : i + 1;
       if (j < 0 || j >= ids.length) return; [ids[i], ids[j]] = [ids[j], ids[i]];
@@ -3224,6 +3479,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "jump" && e.target.value) goMonth(e.target.value);
   if (e.target.dataset && e.target.dataset.roleFor) setRole(e.target.dataset.roleFor, e.target.value, e.target);
   if (e.target.dataset && e.target.dataset.appFor) setAppRole(e.target.dataset.appFor, e.target.value);
+  if (e.target.id === "merch-after") merchAfterSet(e.target.value);
 });
 
 /* =================== 人員 =================== */
