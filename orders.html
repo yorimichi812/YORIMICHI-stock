@@ -2287,7 +2287,8 @@ function pgGo(id, stage, cell) {
 }
 
 /* =================== 試吃追蹤表 =================== */
-// 一位客人一列。追蹤日（試吃日 + 5 天）、提醒優惠（試吃日 + 27 天）不存資料庫，在這裡算。
+// 一位客人一列。追蹤日（試吃日 + 5 天）不存資料庫，在這裡算。
+// 提醒優惠、已提醒、第二個備註已經不用了（第二個備註併進第一個，見 orders-migration-25）。
 const TS_COLS = [
   { f: "name", t: "姓名", kind: "text" },
   { f: "phone", t: "電話", kind: "text" },
@@ -2296,10 +2297,7 @@ const TS_COLS = [
   { f: "pickup", t: "店取/宅配", kind: "menu", opts: ["店取", "宅配"] },
   { f: "follow", t: "追蹤日", kind: "auto", after: 5, check: "tracked" },
   { f: "tracked", t: "已追蹤", kind: "v" },
-  { f: "note1", t: "備註", kind: "note" },
-  { f: "promo", t: "提醒優惠", kind: "auto", after: 27, check: "reminded" },
-  { f: "reminded", t: "已提醒", kind: "v" },
-  { f: "note2", t: "備註", kind: "note" }
+  { f: "note1", t: "備註", kind: "note" }
 ];
 const TS = { rows: [], json: "", archive: false, grid: [], pos: {}, anchor: null, edit: null, dirty: false, click: null };
 const tsCol = f => TS_COLS.find(c => c.f === f);
@@ -2356,7 +2354,7 @@ function renderTasting() {
   $("#view").innerHTML = `<div class="page pg-page">
     <div class="pg-head"><h2>${TS.archive ? "試吃追蹤表：封存區" : "試吃追蹤表"}</h2>
       <button class="btn ghost" type="button" data-a="ts-area">${TS.archive ? "回到試吃追蹤表" : `封存區（${nArch}）`}</button></div>
-    ${TS.archive ? `<p class="muted" style="margin:0 0 10px">這裡是已封存的客人（已追蹤、已提醒都打 V 的會自動移過來），可以直接編輯；選取後按上方的「取消封存」就會回到試吃追蹤表。</p>` : ""}
+    ${TS.archive ? `<p class="muted" style="margin:0 0 10px">這裡是已封存的客人（「已追蹤」打 V 的會自動移過來），可以直接編輯；選取後按上方的「取消封存」就會回到試吃追蹤表。</p>` : ""}
     <div class="pg-body">${TS.archive ? "" : remindHTML(rem, TS_COLS.filter(c => c.kind === "auto").map(c => c.t),
       x => `<button type="button" class="pg-chip" data-a="ts-go" data-id="${x.id}" data-f="${x.f}">${esc(x.name)}</button>`)}
     <table class="pg-table ts-table"><thead><tr>${TS_COLS.map(c => `<th class="${c.f === "name" ? "pg-name" : ""}">${esc(c.t)}</th>`).join("")}</tr></thead>
@@ -2532,7 +2530,7 @@ async function tsSave(id, f, oldV, newV) {
       if (u && u.conflict) return { skip: true, by: u.by };
       if (autoArch) await call("ship_tasting_archive", { p_ids: [id2], p_archived: false });   // 自動封存的一起移回來
     });
-    if (res && res.archived) { if (S.cur && pgParse(S.cur).id === id) { S.cur = null; S.cells = new Set(); } toast(`「${r.name}」已追蹤、已提醒都完成，已移到封存區`); }
+    if (res && res.archived) { if (S.cur && pgParse(S.cur).id === id) { S.cur = null; S.cells = new Set(); } toast(`「${r.name}」已追蹤，已移到封存區`); }
     notify(); await refresh();
   } catch (x) { if (!(x instanceof Handled)) await alertBox(x.message); TS.json = ""; await refresh(); }
 }
