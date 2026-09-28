@@ -253,6 +253,7 @@ table.log-table th{white-space:nowrap}
 table.log-table td:nth-child(-n+5){white-space:nowrap}
 table.log-table td:nth-child(6){width:100%}
 .pp-add{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;background:#fff;border:1px solid var(--rule);border-radius:10px;padding:12px 14px;margin-bottom:6px}
+.pin-temp{display:inline-block;padding:1px 8px;border-radius:999px;background:#fff1dc;color:#9a5b00;font-size:12px;font-weight:700}
 .pp-handout{background:var(--green-soft);border-radius:9px;padding:10px 14px;margin-bottom:10px;font-size:13px;line-height:1.7}
 .pp-handout b{display:block;font-size:14.5px}
 .ts-table tr.ts-r td{border-bottom:1px solid var(--grid)}
@@ -3232,7 +3233,7 @@ function renderPeople() {
   const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}" ${(cur || "") === v ? "selected" : ""}>${t}</option>`).join("");
   const ho = S.handout;
   return `<div class="page"><h2>人員</h2>
-    <p class="muted">帳號跟「門市/工廠撥調」共用，這裡新增、改名、重設密碼、停用或刪除，撥調那邊也會一起生效。<br>
+    <p class="muted">帳號跟「門市/工廠撥調」共用，這裡新增、改名、重設密碼、停用或刪除，撥調那邊也會一起生效。<br>密碼存進系統後是無法還原的，任何人都看不到；有人忘記密碼，請按「重設密碼」給他一組新的臨時密碼。<br>
     出貨表角色　管理者：全部功能＋管理人員　客服：KEY 單、標示狀態、設定、製作進貨、進程表、試吃追蹤表　包裝部：只能看出貨表和庫存表　內場：只能看庫存表</p>
     <h3>新增人員</h3>
     ${ho ? `<div class="pp-handout"><b>已建立 ${esc(ho.name)}，臨時密碼：${esc(ho.pin)}</b>請把這組密碼告訴本人。他第一次登入後，系統會要求他自己設一組新的。
@@ -3245,16 +3246,24 @@ function renderPeople() {
       <button class="btn primary" type="button" data-a="pp-add">新增</button>
     </div>
     <h3>人員名單</h3>
-    <table class="plain"><tr><th>姓名</th><th>撥調身分</th><th>出貨表角色</th><th>狀態</th><th></th></tr>
+    <table class="plain"><tr><th>姓名</th><th>撥調身分</th><th>出貨表角色</th><th>狀態</th><th>密碼</th><th></th></tr>
     ${S.people.map(p => { const me = p.id === S.me.id; return `<tr class="${p.active ? "" : "off"}">
       <td style="white-space:nowrap">${esc(p.name)}${me ? `<span class="muted" style="font-size:12px;margin-left:6px">你</span>` : ""}</td>
       <td><select data-app-for="${p.id}">${opts(APP_ROLES, p.app_role)}</select></td>
       <td><select data-role-for="${p.id}">${opts(SHIP_ROLES, p.role)}</select></td>
       <td style="white-space:nowrap">${p.active ? "啟用中" : `<span class="tag-off">已停用</span>`}</td>
+      <td style="white-space:nowrap">${pinStatus(p)}</td>
       <td style="white-space:nowrap"><button class="btn link" type="button" data-a="pp-rename" data-id="${p.id}">改姓名</button>
         <button class="btn link" type="button" data-a="pp-pin" data-id="${p.id}">重設密碼</button>
         ${me ? "" : `<button class="btn link" type="button" data-a="pp-toggle" data-id="${p.id}">${p.active ? "停用" : "啟用"}</button>
         <button class="btn link danger-text" type="button" data-a="pp-del" data-id="${p.id}">刪除</button>`}</td></tr>`; }).join("")}</table></div>`;
+}
+// 密碼狀態：密碼本身看不到（Supabase 存的是無法還原的亂碼），只看得出是不是還在用臨時密碼
+function pinStatus(p) {
+  if (p.must_set_pin === undefined) return `<span class="muted">—</span>`;   // 還沒執行 migration 23
+  return p.must_set_pin
+    ? `<span class="pin-temp" title="新增或重設密碼後，本人還沒登入改成自己的密碼">臨時密碼（還沒自己設）</span>`
+    : `<span class="muted">已自己設定</span>`;
 }
 const personOf = id => S.people.find(p => p.id === id);
 const shipRoleName = r => (SHIP_ROLES.find(x => x[0] === (r || "")) || [, "不開通"])[1];
