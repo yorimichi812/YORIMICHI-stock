@@ -3647,5 +3647,31 @@ $("#scroll").addEventListener("scroll", () => { if (S.edit) placeEditor(); }, { 
 
 boot();
 </script>
+<script>
+// 庫存表的輔助線：滑鼠指到的格子，畫一條橫線和一條直線穿過它，方便對照品項和日期（線不擋滑鼠）
+(function () {
+  const mk = () => { const d = document.createElement("div"); d.style.cssText = "position:fixed;pointer-events:none;z-index:40;background:rgba(200,120,20,.75);display:none"; document.body.appendChild(d); return d; };
+  const H = mk(), V = mk();
+  let last = null;
+  const hide = () => { H.style.display = V.style.display = "none"; };
+  function draw(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const cell = el && el.closest && el.closest("td, th");
+    const table = cell && cell.closest("table.st");
+    const box = table && table.closest("#scroll");
+    if (!cell || !table || !box || !(S.view === "stock")) return hide();
+    const c = cell.getBoundingClientRect(), t = table.getBoundingClientRect(), b = box.getBoundingClientRect();
+    const L = Math.max(t.left, b.left), R = Math.min(t.right, b.right), T = Math.max(t.top, b.top), B = Math.min(t.bottom, b.bottom);
+    const cy = Math.round(c.top + c.height / 2), cx = Math.round(c.left + c.width / 2);
+    if (R <= L || B <= T) return hide();
+    Object.assign(H.style, { display: "block", left: L + "px", width: (R - L) + "px", top: cy + "px", height: "1px" });
+    Object.assign(V.style, { display: "block", top: T + "px", height: (B - T) + "px", left: cx + "px", width: "1px" });
+  }
+  document.addEventListener("mousemove", e => { last = [e.clientX, e.clientY]; draw(e.clientX, e.clientY); }, { passive: true });
+  document.addEventListener("scroll", () => { if (last) draw(last[0], last[1]); }, { capture: true, passive: true });
+  document.addEventListener("mouseleave", () => { last = null; hide(); });
+  window.addEventListener("blur", hide);
+})();
+</script>
 </body>
 </html>
