@@ -270,9 +270,28 @@ table.log-table td:nth-child(6){width:100%}
 .ts-table td.ts-menu{text-align:center}
 
 @media (max-width:700px){
-  .app{grid-template-columns:96px 1fr}
-  .top,.bar{padding:6px 10px}
+  /* 手機：左邊選單移到最上面一條，工具列收起來，空間留給表格 */
+  .app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr auto}
+  .side{grid-row:1;grid-column:1;flex-direction:row;align-items:center;gap:8px;padding:4px 8px;border-right:0;border-bottom:1px solid var(--rule);min-width:0}
+  .side h1{display:none}
+  .nav{flex-direction:row;gap:2px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}
+  .nav::-webkit-scrollbar{display:none}
+  .nav button{padding:6px 10px;font-size:13px;white-space:nowrap;flex:none}
+  .nav-sep{display:none}
+  .side-foot{margin:0;padding:0;border-top:0;flex-direction:row;align-items:center;gap:6px;flex:none;font-size:12px}
+  .side-foot .who #who-name{display:none}
+  .top{grid-row:2;grid-column:1;min-height:0;padding:0;border-bottom:0}
+  .top .tools{display:none}
+  .top .sync{position:fixed;right:6px;top:46px;z-index:30;background:rgba(255,255,255,.9);padding:4px;border-radius:999px}
+  .top .sync span{display:none}   /* 手機只留連線狀態的小圓點 */
+  .body{grid-row:3;grid-column:1}
+  .bar{grid-row:4;grid-column:1;padding:4px 8px;flex-wrap:nowrap;overflow-x:auto}
+  .months{flex-wrap:nowrap}
+  .months button{white-space:nowrap;flex:none}
+  .jump span{display:none}
   .row2{grid-template-columns:1fr}
+  /* 出貨表、庫存表：兩指縮放交給網頁自己處理（只縮放表格） */
+  #scroll.zoomable{touch-action:pan-x pan-y}
 }
 </style>
 </head>
@@ -776,8 +795,43 @@ async function manageTabs() {
     }
   });
 }
+/* ---------------- 兩指縮放（出貨表、庫存表） ---------------- */
+// 只縮放表格本身，上面的選單和下面的月份按鈕維持原本大小。縮放倍率各頁分開記，重新整理後回到 100%。
+const ZOOM_VIEWS = ["sheet", "stock"];
+S.zoom = {};
+function applyZoom() {
+  const v = $("#view"), sc = $("#scroll");
+  const on = ZOOM_VIEWS.includes(S.view);
+  sc.classList.toggle("zoomable", on);
+  v.style.zoom = on && S.zoom[S.view] && S.zoom[S.view] !== 1 ? S.zoom[S.view] : "";
+}
+(function () {
+  const sc = $("#scroll");
+  let start = null;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  sc.addEventListener("touchstart", e => {
+    if (e.touches.length !== 2 || !ZOOM_VIEWS.includes(S.view)) { start = null; return; }
+    const r = sc.getBoundingClientRect();
+    start = { d: dist(e.touches), z: S.zoom[S.view] || 1,
+      cx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left, cy: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top };
+  }, { passive: true });
+  sc.addEventListener("touchmove", e => {
+    if (!start || e.touches.length !== 2) return;
+    e.preventDefault();
+    const old = S.zoom[S.view] || 1;
+    const z = Math.min(2, Math.max(0.3, Math.round(start.z * dist(e.touches) / start.d * 100) / 100));
+    if (z === old) return;
+    // 手指中間那一點縮放前後維持在同一個位置
+    const ax = (sc.scrollLeft + start.cx) / old, ay = (sc.scrollTop + start.cy) / old;
+    S.zoom[S.view] = z; applyZoom();
+    sc.scrollLeft = ax * z - start.cx; sc.scrollTop = ay * z - start.cy;
+    if (S.edit) placeEditor();
+  }, { passive: false });
+  sc.addEventListener("touchend", e => { if (e.touches.length < 2) start = null; }, { passive: true });
+})();
 function render() {
   renderNav(); renderBar();
+  applyZoom();
   const v = $("#view");
   if (S.view === "sheet") renderSheet();
   else if (S.view === "stats") v.innerHTML = renderStats();
