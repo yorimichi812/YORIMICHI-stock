@@ -1930,13 +1930,15 @@ window.addEventListener("resize", () => {
   }, 100);
 });
 
-// 今日提醒：日期是今天、還沒完成、沒封存的
+// 今日提醒：日期是今天或已經過了、還沒完成、沒封存的
 function pgReminders() {
   const out = [];
   for (const r of PG.rows) {
     if (r.archived) continue;
     for (const s of PG_STAGES) {
-      if (!s.remind || pgDate(r, s.k) !== S.today) continue;
+      // 今天到期，或已經過了還沒完成的，都列出來，直到完成
+      const d = pgDate(r, s.k);
+      if (!s.remind || !d || d > S.today) continue;
       if (s.done((r.cells || {})[s.k + ".m"])) continue;
       out.push({ id: r.id, name: r.name, stage: s.k, t: s.t });
     }
@@ -2312,11 +2314,17 @@ function tsValue(r, f) {
 }
 // 09 開頭的 10 位數手機號碼自動加橫線，其他照打的存
 function tsPhone(raw) { const s = raw.trim(); return /^09\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 7)}-${s.slice(7)}` : s; }
+const TS_OVERDUE_FROM = "2026-08-01";
 function tsReminders() {
   const out = [];
   for (const r of TS.rows) {
     if (r.archived || !r.date) continue;
-    for (const c of TS_COLS) if (c.kind === "auto" && pgAddDays(r.date, c.after) === S.today && !r[c.check]) out.push({ id: r.id, name: r.name, f: c.check, t: c.t });
+    for (const c of TS_COLS) {
+      if (c.kind !== "auto" || r[c.check]) continue;
+      // 今天到期，或已經過了還沒打 V 的都列出來；提醒日在 TS_OVERDUE_FROM 以前的舊資料只在當天提醒
+      const d = pgAddDays(r.date, c.after);
+      if (d === S.today || (d < S.today && d >= TS_OVERDUE_FROM)) out.push({ id: r.id, name: r.name, f: c.check, t: c.t });
+    }
   }
   return out;
 }
