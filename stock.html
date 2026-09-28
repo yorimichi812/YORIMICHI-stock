@@ -2643,7 +2643,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.c
     if (!cell || !table || !box || !(true)) return hide();
     const c = cell.getBoundingClientRect(), t = table.getBoundingClientRect(), b = box.getBoundingClientRect();
     const L = Math.max(t.left, b.left), R = Math.min(t.right, b.right), T = Math.max(t.top, b.top), B = Math.min(t.bottom, b.bottom);
-    const cy = Math.round(c.top + c.height / 2), cx = Math.round(c.left + c.width / 2);
+    // 一格裡上下疊了工廠、門市兩小格：橫線照滑鼠所在的那一小格的中間畫
+    const sub = el.closest(".cl") || [...cell.querySelectorAll(".cl")].find(d => { const r = d.getBoundingClientRect(); return y >= r.top && y <= r.bottom; });
+    const s = sub && cell.contains(sub) ? sub.getBoundingClientRect() : c;
+    const cy = Math.round(s.top + s.height / 2), cx = Math.round(c.left + c.width / 2);
     if (R <= L || B <= T) return hide();
     Object.assign(H.style, { display: "block", left: L + "px", width: (R - L) + "px", top: cy + "px", height: "1px" });
     Object.assign(V.style, { display: "block", top: T + "px", height: (B - T) + "px", left: cx + "px", width: "1px" });
