@@ -1940,9 +1940,16 @@ function pgReminders() {
       if (s.done((r.cells || {})[s.k + ".m"])) continue;
       out.push({ id: r.id, name: r.name, stage: s.k, t: s.t });
     }
+    // 合約/回簽日期 + 3 天那天起，訂金還沒打日期，就每天都提醒，直到打上訂金日期
+    const cd = (r.cells || {})["contract.d"];
+    if (cd && !(r.cells || {})["deposit.d"] && pgAddDays(cd, UNPAID_DAYS) <= S.today) {
+      const days = Math.round((Date.parse(S.today) - Date.parse(cd)) / 86400000);
+      out.push({ id: r.id, name: r.name, stage: "deposit", cell: "deposit.d", t: UNPAID_T, tip: `合約/回簽 ${pgMD(cd)}，已經 ${days} 天還沒付訂金` });
+    }
   }
   return out;
 }
+const UNPAID_DAYS = 3, UNPAID_T = "未付訂金";
 
 function renderProgress() {
   if (PG.edit) { PG.dirty = true; return; }
@@ -1982,8 +1989,8 @@ function renderProgress() {
     <div class="pg-head"><h2>${PG.archive ? "進程表：封存區" : "進程表"}</h2>
       <button class="btn ghost" type="button" data-a="pg-area">${PG.archive ? "回到進程表" : `封存區（${nArch}）`}</button></div>
     ${PG.archive ? `<p class="muted" style="margin:0 0 10px">這裡只顯示已封存的客人，可以直接編輯；選取後按上方的「取消封存」就會回到進程表。</p>` : ""}
-    <div class="pg-body">${PG.archive ? "" : remindHTML(rem, PG_STAGES.map(s => s.t),
-      x => `<button type="button" class="pg-chip" data-a="pg-go" data-id="${x.id}" data-stage="${x.stage}">${esc(x.name)}</button>`)}
+    <div class="pg-body">${PG.archive ? "" : remindHTML(rem, [UNPAID_T, ...PG_STAGES.map(s => s.t)],
+      x => `<button type="button" class="pg-chip" data-a="pg-go" data-id="${x.id}" data-stage="${x.stage}"${x.cell ? ` data-cell="${x.cell}"` : ""}${x.tip ? ` title="${esc(x.tip)}"` : ""}>${esc(x.name)}</button>`)}
     <table class="pg-table"><thead><tr><th class="pg-name">姓名</th><th>希望到貨日</th>${PG_STAGES.map(s => `<th>${esc(s.t)}</th>`).join("")}<th class="pg-note">備註</th></tr></thead>
     <tbody>${body || `<tr><td colspan="${PG_STAGES.length + 3}" class="muted" style="text-align:center;padding:24px">封存區沒有客人</td></tr>`}</tbody></table></div></div>`;
   remindLayout();
@@ -2270,9 +2277,9 @@ function pgArea() {
   PG.archive = !PG.archive; S.cells = new Set(); S.cur = null; PG.anchor = null; trackPresence(null);
   $("#scroll").scrollTo(0, 0); renderProgress();
 }
-function pgGo(id, stage) {
+function pgGo(id, stage, cell) {
   if (PG.archive) { PG.archive = false; renderProgress(); }
-  const k = pgKey(id, stage + ".m");
+  const k = pgKey(id, cell || stage + ".m");   // 未付訂金：跳到訂金的日期格
   S.cells = new Set([k]); PG.anchor = k; pgPaintSel(); pgSetCur(k);
   const c = cellOf(k); if (c) c.scrollIntoView({ block: "center", inline: "center" });
 }
@@ -3634,7 +3641,7 @@ document.addEventListener("click", e => {
   if (act === "pg-archive") return pgArchive(true);
   if (act === "pg-unarchive") return pgArchive(false);
   if (act === "pg-area") return pgArea();
-  if (act === "pg-go") return pgGo(Number(a.dataset.id), a.dataset.stage);
+  if (act === "pg-go") return pgGo(Number(a.dataset.id), a.dataset.stage, a.dataset.cell);
   if (act === "more-logs") return loadLogs(false).catch(() => {});
   if (act === "clear-logs") { S.logs.f = { from: "", to: "", actor: "", customer: "" }; $("#view").innerHTML = logsShell(); return loadLogs(true).catch(() => {}); }
 });
