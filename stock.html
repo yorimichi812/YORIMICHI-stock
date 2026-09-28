@@ -372,6 +372,20 @@ h3.sec { font-size:13px; font-weight:700; margin:22px 0 9px; }
 .orders .ocust { font-weight:600; }
 .orders .oacts { white-space:nowrap; text-align:right; }
 .orders td div + div { margin-top:3px; }
+/* 依日期分段 */
+.orders tr.odayh td { background:#f4f1e8; padding:8px 12px; border-top:2px solid var(--rule); white-space:normal; }
+.orders tbody tr.odayh:hover td { background:#f4f1e8; }
+.orders tr.odayh.today td { background:#e7efe8; }
+.orders tbody tr.odayh.today:hover td { background:#e7efe8; }
+.orders tr.odayh.past b { color:var(--soft); }
+.odayh-in { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.odayh-in b { font-size:14.5px; }
+.odayh-today { background:var(--green); color:#fff; border-radius:999px; padding:1px 9px; font-size:12px; font-weight:700; }
+.odayh-n { color:var(--soft); font-size:13px; }
+.odayh-btn { margin-left:auto; border:1px solid var(--rule); background:var(--card); border-radius:7px; padding:3px 10px; font-size:12.5px; cursor:pointer; color:var(--ink); }
+.orders tr.odayt td { background:#fbfaf6; padding:8px 12px 10px; white-space:normal; }
+.odayt-in { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:13px; }
+.odayt-it .sub { margin-left:3px; }
 
 /* ---------- 訂單表格欄寬 ---------- */
 .orders { table-layout:fixed; }
@@ -1489,18 +1503,56 @@ function OrdersPage({
   const [kw, setKw] = useState("");
   const [locF, setLocF] = useState("all");
   const t = today();
+  // 看哪個月（預設這個月）；展開了「當天合計」的日子
+  const [ym, setYm] = useState(t.slice(0, 7));
+  const [openDays, setOpenDays] = useState({});
+  const shiftMonth = delta => {
+    const d = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + delta, 1);
+    setYm(d.getFullYear() + "-" + pad(d.getMonth() + 1));
+  };
   const nameOf = id => {
     const it = db.items.find(i => i.id === id);
     return it ? it.name : "（已刪品項）";
   };
   const list = useMemo(() => db.orders.filter(o => {
+    if (o.date.slice(0, 7) !== ym) return false;
     if (locF !== "all" && o.loc !== locF) return false;
     if (kw) {
       const hay = (o.customer + " " + (o.extNo || "") + " " + o.no).toLowerCase();
       if (hay.indexOf(kw.toLowerCase()) === -1) return false;
     }
     return true;
-  }).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0), [db.orders, kw, locF]);
+  }).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0), [db.orders, kw, locF, ym]);
+  // 依日期分段
+  const days = useMemo(() => {
+    const out = [];
+    for (const o of list) {
+      let g = out[out.length - 1];
+      if (!g || g.date !== o.date) { g = { date: o.date, orders: [] }; out.push(g); }
+      g.orders.push(o);
+    }
+    return out;
+  }, [list]);
+  // 打開這個月時，自動捲到今天（今天沒有訂單就捲到今天之後最近的一天）
+  const scrolledRef = useRef("");
+  useEffect(() => {
+    if (ym !== t.slice(0, 7) || scrolledRef.current === ym) return;
+    const g = days.find(d => d.date >= t);
+    if (!g) return;
+    scrolledRef.current = ym;
+    const el = document.getElementById("oday-" + g.date);
+    if (el) el.scrollIntoView({ block: "start" });
+  }, [days, ym]);
+  // 當天各品項合計（分工廠、門市）
+  const dayTotals = g => {
+    const m = {};
+    for (const o of g.orders) for (const l of o.lines) {
+      const r = m[l.itemId] || (m[l.itemId] = { factory: 0, store: 0 });
+      r[o.loc === "factory" ? "factory" : "store"] += l.qty;
+    }
+    return Object.entries(m).map(([id, r]) => ({ name: nameOf(id), ...r, total: r.factory + r.store }))
+      .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  };
   const remove = async o => {
     const detail = o.lines.map(l => nameOf(l.itemId) + " " + l.qty).join("、");
     if (!window.confirm("刪除 " + o.date + "　" + o.customer + "\n" + LOC_NAME[o.loc] + "｜" + detail + "\n\n庫存表會立刻把這些數量加回去。")) return;
@@ -1518,6 +1570,16 @@ function OrdersPage({
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "lede"
   }, "訂單由出貨表派單時自動建立，要修改或刪除請到出貨表。"), /*#__PURE__*/React.createElement("div", {
+    className: "pager"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "pg",
+    onClick: () => shiftMonth(-1)
+  }, "‹ 上月"), /*#__PURE__*/React.createElement("div", {
+    className: "pgnow"
+  }, Number(ym.slice(0, 4)), " 年 ", Number(ym.slice(5, 7)), " 月"), /*#__PURE__*/React.createElement("button", {
+    className: "pg",
+    onClick: () => shiftMonth(1)
+  }, "下月 ›")), /*#__PURE__*/React.createElement("div", {
     className: "fields",
     style: {
       marginBottom: 12
@@ -1542,7 +1604,7 @@ function OrdersPage({
     className: "card full"
   }, list.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty"
-  }, "這個條件下沒有訂單。") : /*#__PURE__*/React.createElement("div", {
+  }, kw || locF !== "all" ? "這個月沒有符合條件的訂單。" : "這個月沒有訂單。") : /*#__PURE__*/React.createElement("div", {
     className: "scroll"
   }, /*#__PURE__*/React.createElement("table", {
     className: "orders"
@@ -1556,7 +1618,41 @@ function OrdersPage({
     className: "l"
   }, "出貨地點"), /*#__PURE__*/React.createElement("th", {
     className: "l"
-  }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, list.map(o => {
+  }, "建立者"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, days.map(g => {
+    const nf = g.orders.filter(o => o.loc === "factory").length, ns = g.orders.length - nf;
+    const open = !!openDays[g.date], isToday = g.date === t;
+    const head = /*#__PURE__*/React.createElement("tr", {
+      key: "h" + g.date,
+      id: "oday-" + g.date,
+      className: "odayh" + (isToday ? " today" : "") + (g.date < t ? " past" : "")
+    }, /*#__PURE__*/React.createElement("td", {
+      colSpan: 7
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "odayh-in"
+    }, /*#__PURE__*/React.createElement("b", null, mdOf(g.date), "（", weekdayOf(g.date), "）"), isToday && /*#__PURE__*/React.createElement("span", {
+      className: "odayh-today"
+    }, "今天"), /*#__PURE__*/React.createElement("span", {
+      className: "odayh-n"
+    }, g.orders.length, " 筆", nf && ns ? "　工廠 " + nf + "・門市 " + ns : nf ? "　全部工廠" : "　全部門市"), /*#__PURE__*/React.createElement("button", {
+      className: "odayh-btn",
+      onClick: () => setOpenDays(Object.assign({}, openDays, { [g.date]: !open }))
+    }, open ? "▾ 收起合計" : "▸ 當天合計"))));
+    const tot = open && /*#__PURE__*/React.createElement("tr", {
+      key: "t" + g.date,
+      className: "odayt"
+    }, /*#__PURE__*/React.createElement("td", {
+      colSpan: 7
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "odayt-in"
+    }, dayTotals(g).map(r => /*#__PURE__*/React.createElement("span", {
+      key: r.name,
+      className: "odayt-it"
+    }, /*#__PURE__*/React.createElement("b", null, r.name, " ", fmt(r.total)), r.factory && r.store ? /*#__PURE__*/React.createElement("span", {
+      className: "sub"
+    }, "（工廠 ", fmt(r.factory), "・門市 ", fmt(r.store), "）") : /*#__PURE__*/React.createElement("span", {
+      className: "sub"
+    }, r.factory ? "（工廠）" : "（門市）"))))));
+    return [head, tot].concat(g.orders.map(o => {
     const sameYear = o.date.slice(0, 4) === today().slice(0, 4);
     return /*#__PURE__*/React.createElement("tr", {
       key: o.id
@@ -1588,6 +1684,7 @@ function OrdersPage({
     }, o.shipOrderId ? /*#__PURE__*/React.createElement("span", {
       className: "sub"
     }, "由出貨表建立，請到出貨表修改") : null));
+  }));
   }))))), editing && /*#__PURE__*/React.createElement(OrderSheet, {
     db: db,
     me: me,
